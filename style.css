@@ -1,0 +1,192 @@
+/* Non-critical styles for the lantern-adventure UI.
+   Critical first-paint CSS (header, setup panel, resume card,
+   buttons, status/error, footer) lives inline in index.html.
+   This file covers the in-game UI: story scroll, choice cards,
+   freeform input, ending stamp, toast, and the action row.       */
+
+/* ---------- Story view ---------- */
+.scroll {
+  display: flex; flex-direction: column; gap: 36px;
+}
+.beat {
+  animation: fadeUp .8s ease both;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.beat-meta {
+  display: flex; align-items: center; gap: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .28em;
+  text-transform: uppercase;
+  color: var(--vellum-muted);
+  margin-bottom: 14px;
+}
+.beat-meta .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ember);
+  box-shadow: 0 0 8px var(--ember);
+}
+.beat-meta.user .dot { background: var(--blood); box-shadow: 0 0 8px var(--blood); }
+.beat-meta hr {
+  flex: 1;
+  border: none;
+  border-top: 1px dashed var(--rule);
+  margin: 0;
+}
+
+.narrative {
+  font-size: 18px;
+  line-height: 1.95;
+  color: var(--vellum);
+  white-space: pre-wrap;
+}
+.narrative p { margin: 0 0 1em; }
+.narrative p:last-child { margin-bottom: 0; }
+.narrative::first-letter {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 3.2em;
+  line-height: .9;
+  float: left;
+  padding: 6px 10px 0 0;
+  color: var(--ember);
+  font-weight: 500;
+}
+.beat:not(:first-child) .narrative::first-letter {
+  font-size: inherit; float: none; padding: 0; color: inherit; font-weight: inherit;
+}
+
+.player-action {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 18px;
+  color: var(--vellum-dim);
+  border-left: 2px solid var(--blood);
+  padding: 4px 0 4px 18px;
+  margin: 0;
+}
+.player-action::before {
+  content: '› ';
+  color: var(--blood);
+  font-style: normal;
+  font-weight: 600;
+}
+
+/* ---------- Choice cards ---------- */
+.choices {
+  margin-top: 36px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+@media (min-width: 560px) {
+  .choices { grid-template-columns: 1fr 1fr; }
+}
+
+.choice {
+  appearance: none;
+  text-align: left;
+  background: var(--ink-2);
+  color: var(--vellum);
+  border: 1px solid var(--rule);
+  padding: 16px 18px 16px 46px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 15.5px;
+  line-height: 1.55;
+  cursor: pointer;
+  position: relative;
+  border-radius: 2px;
+  transition: all .18s ease;
+}
+.choice::before {
+  content: attr(data-key);
+  position: absolute;
+  left: 14px; top: 50%;
+  transform: translateY(-50%);
+  width: 22px; height: 22px;
+  border: 1px solid var(--ember);
+  color: var(--ember);
+  border-radius: 50%;
+  display: grid; place-items: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  transition: all .18s ease;
+}
+.choice:hover {
+  border-color: var(--ember);
+  background: rgba(216,146,58,.06);
+  transform: translateX(2px);
+}
+.choice:hover::before {
+  background: var(--ember);
+  color: var(--ink);
+}
+.choice:disabled { cursor: wait; opacity: .5; }
+
+/* ---------- Free input ---------- */
+.freeform {
+  margin-top: 18px;
+  border-top: 1px dashed var(--rule);
+  padding-top: 18px;
+}
+.freeform label {
+  display: block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .28em;
+  text-transform: uppercase;
+  color: var(--vellum-muted);
+  margin-bottom: 8px;
+}
+.freeform .row { gap: 8px; }
+.freeform input.text { flex: 1; min-width: 200px; }
+
+
+.ending-stamp {
+  text-align: center;
+  margin-top: 40px;
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 32px;
+  color: var(--ember);
+  letter-spacing: .3em;
+  opacity: 0;
+  animation: fadeUp 1.6s 0.4s ease both;
+}
+.ending-stamp::before, .ending-stamp::after {
+  content: ' · ';
+  color: var(--rule);
+}
+
+/* ---------- Toast ---------- */
+.toast {
+  position: fixed;
+  left: 50%; bottom: 32px;
+  transform: translate(-50%, 20px);
+  background: rgba(20, 16, 12, 0.95);
+  color: var(--vellum);
+  padding: 11px 20px;
+  border-radius: 2px;
+  font-size: 13.5px;
+  border: 1px solid var(--ember);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s ease, transform .25s ease;
+  z-index: 1000;
+  max-width: 90vw;
+  text-align: center;
+  font-family: 'Noto Serif SC', serif;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.action-row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 40px;
+}
