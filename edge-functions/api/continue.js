@@ -20,7 +20,7 @@
 // }
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
-const MODEL = 'deepseek-v4-pro';
+const MODEL = 'deepseek-v4-flash';
 
 const SYSTEM_PROMPT = `你是一位才华横溢的互动小说作者，正在为一个文字冒险游戏续写故事。
 你必须使用中文写作，第二人称"你"叙事。

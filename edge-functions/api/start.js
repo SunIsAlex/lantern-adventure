@@ -18,7 +18,7 @@
 // }
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
-const MODEL = 'deepseek-v4-pro';
+const MODEL = 'deepseek-v4-flash';
 
 const SYSTEM_PROMPT = `你是一位才华横溢的互动小说作者，正在为一个文字冒险游戏（类似 AI Dungeon）撰写故事。
 你必须严格使用中文写作，文笔要有画面感、有悬念、有节奏。
