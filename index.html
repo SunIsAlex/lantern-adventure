@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>提灯人 · 文字冒险</title>
+<title>提灯人 · 文字冒险(V1.1)</title>
 <meta name="description" content="在黑暗中点亮一盏提灯——一个由 AI 即兴讲述的中文文字冒险，每一个选择都通向不同的结局。" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -491,6 +491,123 @@
     flex-wrap: wrap;
     margin-top: 40px;
   }
+
+  /* ---------- Modal (share code display) ---------- */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.78);
+    backdrop-filter: blur(4px);
+    z-index: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease;
+  }
+  .modal-backdrop.show { opacity: 1; pointer-events: auto; }
+
+  .modal {
+    background: linear-gradient(180deg, var(--ink-3), var(--ink-2));
+    border: 1px solid var(--rule);
+    box-shadow: 0 40px 100px -20px rgba(0,0,0,.9), 0 0 0 1px rgba(216,146,58,.2);
+    border-radius: 2px;
+    padding: 28px 28px 24px;
+    max-width: 520px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+    transform: translateY(12px) scale(.98);
+    transition: transform .25s ease;
+  }
+  .modal-backdrop.show .modal { transform: translateY(0) scale(1); }
+  .modal::before {
+    content: '';
+    position: absolute; inset: 4px;
+    border: 1px solid rgba(216,146,58,.18);
+    pointer-events: none;
+  }
+  .modal h2 {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 500;
+    font-size: 24px;
+    margin: 0 0 4px;
+    color: var(--ember-bright);
+  }
+  .modal p.hint {
+    color: var(--vellum-muted);
+    font-size: 13.5px;
+    line-height: 1.6;
+    margin: 0 0 18px;
+  }
+  .code-box {
+    width: 100%;
+    min-height: 140px;
+    max-height: 240px;
+    background: var(--ink);
+    border: 1px solid var(--rule);
+    color: var(--vellum-dim);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11.5px;
+    line-height: 1.55;
+    padding: 12px 14px;
+    border-radius: 2px;
+    resize: vertical;
+    outline: none;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+    -webkit-user-select: all;
+    user-select: all;
+  }
+  .code-box:focus { border-color: var(--ember); }
+  .code-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    color: var(--vellum-muted);
+    letter-spacing: .08em;
+    margin-top: 8px;
+    margin-bottom: 14px;
+    text-align: right;
+  }
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  /* ---------- Disclosure / import code ---------- */
+  details.disclosure {
+    margin-top: 22px;
+    border-top: 1px dashed var(--rule);
+    padding-top: 18px;
+  }
+  details.disclosure summary {
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: var(--vellum-muted);
+    list-style: none;
+    transition: color .15s;
+    user-select: none;
+  }
+  details.disclosure summary::-webkit-details-marker { display: none; }
+  details.disclosure summary::before {
+    content: '＋ ';
+    color: var(--ember);
+    transition: transform .2s;
+    display: inline-block;
+  }
+  details.disclosure[open] summary::before {
+    content: '－ ';
+  }
+  details.disclosure summary:hover { color: var(--vellum-dim); }
+  details.disclosure .body { margin-top: 14px; }
 </style>
 </head>
 <body>
@@ -545,6 +662,24 @@
       <span id="setupStatus" class="status" style="margin: 0;"></span>
     </div>
     <div id="setupError" class="error hidden"></div>
+
+    <details class="disclosure" id="importDisclosure">
+      <summary>载入别人分享的进度</summary>
+      <div class="body">
+        <p class="hint" style="margin-bottom:10px;">
+          把朋友分享给你的故事代码粘贴到这里。前后多出的空格、换行都没关系。
+        </p>
+        <textarea id="importInput" class="code-box"
+          placeholder="把分享代码粘贴到这里……" spellcheck="false"></textarea>
+        <div class="row" style="margin-top:12px;">
+          <button id="importBtn" class="btn ghost" style="font-size:14px;padding:9px 16px;">
+            ↘ 载入这段故事
+          </button>
+          <span id="importStatus" class="status" style="margin:0;font-size:14px;"></span>
+        </div>
+        <div id="importError" class="error hidden" style="margin-top:10px;"></div>
+      </div>
+    </details>
   </section>
 
   <!-- ===================== GAME ===================== -->
@@ -573,12 +708,28 @@
     </div>
 
     <div class="action-row">
-      <button id="shareBtn" class="btn ghost" title="生成可分享的链接（不会泄露你的 API Key）">
+      <button id="shareBtn" class="btn ghost" title="生成可分享的故事代码">
         ⤴ 分享当前进度
       </button>
       <button id="restartBtn" class="btn ghost">↺ 重新开始一段新故事</button>
     </div>
   </section>
+
+  <!-- ===================== SHARE MODAL ===================== -->
+  <div id="shareModal" class="modal-backdrop" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h2>分享这段故事</h2>
+      <p class="hint">
+        把下面这段代码发给朋友。他们打开提灯人，展开"载入别人分享的进度"，粘贴进去即可从你停下的地方继续。
+      </p>
+      <textarea id="shareCode" class="code-box" readonly spellcheck="false"></textarea>
+      <div class="code-meta" id="shareMeta"></div>
+      <div class="modal-actions">
+        <button id="shareCopyBtn" class="btn" style="font-size:15px;padding:9px 18px;">复制代码</button>
+        <button id="shareCloseBtn" class="btn ghost">关闭</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toast" class="toast"></div>
 
@@ -617,25 +768,23 @@
   const toastEl     = $('toast');
 
   // ============================================================
-  // Persistence layer — localStorage (private) + URL fragment (shareable)
+  // Persistence layer — localStorage (private) + share code (portable)
   //
   // Two layers, two purposes:
   //   - localStorage : silent auto-save so refreshes / closing the tab don't
   //                    lose progress. Only visible to this browser.
-  //   - URL fragment : the share button. Fragment, not query, so story
-  //                    content never hits the server or any CDN access log,
-  //                    and isn't truncated by EdgeOne's query-length limits.
+  //   - share code   : a copy-pasteable block of text (the compressed save).
+  //                    The user pastes it into the import textarea on the
+  //                    setup panel to resume on another device or share with
+  //                    a friend. We deliberately do NOT use URL fragments
+  //                    for this — different chat apps mangle long fragments
+  //                    on the way through.
   //
-  // We use LZ-String's compressToEncodedURIComponent — already URL-safe, and
-  // it compresses repetitive Chinese dialogue history to ~30-40% of original,
-  // which buys us ~3x more shareable turns vs. plain base64.
+  // Encoding pipeline: JSON → UTF-8 → deflate-raw → base64url
+  // (CompressionStream is Baseline Widely Available since May 2023; no CDN.)
   // ============================================================
   const SAVE_KEY     = 'lantern.save.v1';
   const SAVE_VERSION = 1;
-  // Conservative shareable-URL size budget for the encoded fragment payload.
-  // ~6000 chars leaves plenty of room below the practical 8000-char URL ceiling
-  // once the origin + path + "#s=" prefix is included.
-  const SHARE_MAX_LEN = 6000;
 
   // ============================================================
   // Game state
@@ -742,7 +891,21 @@
 
   async function decodeShare(encoded) {
     try {
-      const compressed = base64UrlToBytes(encoded);
+      // Sanitize: trim, drop whitespace/newlines, and strip anything that
+      // can sneak in from copy/paste (URL prefixes, leading '#' or '?',
+      // surrounding quotes). After this we should be left with pure
+      // base64url characters: A-Z a-z 0-9 - _
+      let cleaned = String(encoded || '').trim();
+      // Drop a full URL if pasted: keep only the part after '#s=' or just the last token.
+      const fragMatch = cleaned.match(/[#&?]s=([^&\s]+)/);
+      if (fragMatch) cleaned = fragMatch[1];
+      // Strip wrapping quotes / backticks
+      cleaned = cleaned.replace(/^[`'"\s]+|[`'"\s]+$/g, '');
+      // Strip anything that's not a valid base64url char
+      cleaned = cleaned.replace(/[^A-Za-z0-9\-_]/g, '');
+      if (!cleaned) return null;
+
+      const compressed = base64UrlToBytes(cleaned);
       const utf8 = await inflate(compressed);
       const json = new TextDecoder().decode(utf8);
       const save = JSON.parse(json);
@@ -751,21 +914,6 @@
     } catch (e) {
       console.warn('[share] decode failed:', e);
       return null;
-    }
-  }
-
-  async function tryParseUrlFragment() {
-    const hash = window.location.hash || '';
-    const m = hash.match(/[#&]s=([^&]+)/);
-    if (!m) return null;
-    return await decodeShare(m[1]);
-  }
-
-  function clearUrlFragment() {
-    // Strip the long fragment from the address bar after we've loaded it.
-    if (window.location.hash) {
-      const url = window.location.pathname + window.location.search;
-      history.replaceState(null, '', url);
     }
   }
 
@@ -1008,7 +1156,6 @@
 
     if (fromShare) {
       toast('已载入分享的故事进度');
-      clearUrlFragment();
     }
   }
 
@@ -1063,44 +1210,119 @@
   }
 
   // ============================================================
-  // Share
+  // Share — open a modal showing the encoded code; user copies it manually
   // ============================================================
+  const shareModal     = $('shareModal');
+  const shareCodeEl    = $('shareCode');
+  const shareMetaEl    = $('shareMeta');
+  const shareCopyBtn   = $('shareCopyBtn');
+  const shareCloseBtn  = $('shareCloseBtn');
+
+  function openShareModal() {
+    shareModal.classList.add('show');
+    // Auto-select the textarea after the modal animates in so users can
+    // just hit Ctrl/Cmd+C if the copy button somehow fails.
+    setTimeout(() => {
+      shareCodeEl.focus();
+      shareCodeEl.select();
+    }, 250);
+  }
+  function closeShareModal() {
+    shareModal.classList.remove('show');
+  }
+
   async function shareProgress() {
     if (!storyState) return;
+    shareCopyBtn.disabled = true;
+    const originalCopyHTML = shareCopyBtn.innerHTML;
+    shareCopyBtn.textContent = '生成中…';
+    openShareModal();
+    shareCodeEl.value = '';
+    shareMetaEl.textContent = '';
+
     const encoded = await encodeShare(buildSave());
 
+    shareCopyBtn.disabled = false;
+    shareCopyBtn.innerHTML = originalCopyHTML;
+
     if (!encoded) {
-      toast('生成分享链接失败，请重试');
+      shareCodeEl.value = '（生成失败，请重试）';
+      shareMetaEl.textContent = '';
       return;
     }
 
-    if (encoded.length > SHARE_MAX_LEN) {
-      toast('故事太长，无法直接分享。建议玩到结局或截图分享。', 4000);
-      return;
-    }
+    shareCodeEl.value = encoded;
+    const turns = (storyState.history || []).filter(b => b.role === 'user').length;
+    shareMetaEl.textContent = `${encoded.length.toLocaleString()} 字符 · 已进行 ${turns} 个回合`;
+    // Select it for easy keyboard copy
+    shareCodeEl.focus();
+    shareCodeEl.select();
+  }
 
-    const url = `${window.location.origin}${window.location.pathname}#s=${encoded}`;
-
-    // Prefer native share sheet on mobile; fall back to clipboard.
-    if (navigator.share) {
+  async function copyShareCode() {
+    const code = shareCodeEl.value;
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      toast('代码已复制到剪贴板');
+    } catch (e) {
+      // Fall back to manual selection
+      shareCodeEl.focus();
+      shareCodeEl.select();
       try {
-        await navigator.share({
-          title: `提灯人 · ${storyState.title || '一段未完的故事'}`,
-          text: '在这盏灯下，我留了一段故事给你——',
-          url,
-        });
-        return;
-      } catch (e) {
-        if (e?.name === 'AbortError') return;
-        // Otherwise fall through to clipboard.
+        document.execCommand('copy');
+        toast('代码已复制');
+      } catch (_) {
+        toast('复制失败，请长按或框选后手动复制');
       }
     }
+  }
 
+  // ============================================================
+  // Import — read the encoded code from the textarea and load into the game
+  // ============================================================
+  const importInput  = $('importInput');
+  const importBtn    = $('importBtn');
+  const importStatus = $('importStatus');
+  const importError  = $('importError');
+  const importDisclosure = $('importDisclosure');
+
+  function showImportError(msg) {
+    importError.textContent = msg;
+    importError.classList.remove('hidden');
+  }
+  function clearImportError() {
+    importError.classList.add('hidden');
+    importError.textContent = '';
+  }
+
+  async function importShare() {
+    clearImportError();
+    const raw = importInput.value;
+    if (!raw || !raw.trim()) {
+      showImportError('请先把分享代码粘贴到输入框里。');
+      return;
+    }
+    importBtn.disabled = true;
+    importStatus.innerHTML = '正在解码<span class="dots"><span>.</span><span>.</span><span>.</span></span>';
     try {
-      await navigator.clipboard.writeText(url);
-      toast(`链接已复制（${encoded.length.toLocaleString()} 字符）`);
+      const save = await decodeShare(raw);
+      if (!save) {
+        showImportError('无法识别这段代码——请确认是完整的提灯人分享代码。');
+        return;
+      }
+      // If a local save exists, warn — loading will overwrite it.
+      const existing = loadLocal();
+      if (existing) {
+        const proceed = confirm('载入分享的故事会覆盖你当前的本地存档。继续？');
+        if (!proceed) return;
+      }
+      loadSave(save, { fromShare: true });
     } catch (e) {
-      prompt('复制下面的链接分享给朋友：', url);
+      showImportError('解码出错：' + (e.message || e));
+    } finally {
+      importBtn.disabled = false;
+      importStatus.textContent = '';
     }
   }
 
@@ -1110,6 +1332,20 @@
   startBtn.addEventListener('click', startStory);
   restartBtn.addEventListener('click', restart);
   shareBtn.addEventListener('click', shareProgress);
+  shareCopyBtn.addEventListener('click', copyShareCode);
+  shareCloseBtn.addEventListener('click', closeShareModal);
+  // Click outside the modal to close
+  shareModal.addEventListener('click', (e) => {
+    if (e.target === shareModal) closeShareModal();
+  });
+  importBtn.addEventListener('click', importShare);
+  importInput.addEventListener('keydown', (e) => {
+    // Ctrl/Cmd + Enter to submit
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      importBtn.click();
+    }
+  });
   freeBtn.addEventListener('click', () => {
     const v = freeInput.value.trim();
     if (v) submitAction(v);
@@ -1121,8 +1357,14 @@
     }
   });
   document.addEventListener('keydown', (e) => {
+    // Esc closes the share modal regardless of game state
+    if (e.key === 'Escape' && shareModal.classList.contains('show')) {
+      closeShareModal();
+      return;
+    }
     if (busy || gameEl.classList.contains('hidden')) return;
     if (document.activeElement === freeInput) return;
+    if (document.activeElement === importInput) return;
     const k = e.key.toUpperCase();
     if (['A','B','C','D'].includes(k)) {
       const idx = k.charCodeAt(0) - 65;
@@ -1136,16 +1378,15 @@
 
   // ============================================================
   // Boot
-  //   1. URL fragment (shared link) wins — overrides local save
-  //   2. localStorage  → show resume card; user decides
-  //   3. Otherwise: fresh start
+  //   localStorage save → show resume card; user decides
+  //   Otherwise: fresh start
+  //
+  // Receivers of shared stories paste the code into the import textarea
+  // on the setup panel — no URL parsing here. This was a deliberate choice
+  // because URL fragments turned out to get mangled by some clients during
+  // the share → paste round-trip, leading to silent decode failures.
   // ============================================================
-  (async function boot() {
-    const shared = await tryParseUrlFragment();
-    if (shared) {
-      loadSave(shared, { fromShare: true });
-      return;
-    }
+  (function boot() {
     const local = loadLocal();
     if (local) {
       showResumeCard(local);
