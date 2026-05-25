@@ -310,68 +310,36 @@
     return { beat, body };
   }
 
-  // Append a single character to a streaming beat, re-splitting into <p> tags.
-  function appendChar({ body, beat }, ch) {
-    body._raw += ch;
-    // Re-render: split on double-newline into paragraphs.
+  // Render the full narrative text into a beat created by createStreamingBeat.
+  // Re-splits on double-newline into paragraphs, same as the old per-char
+  // renderer did, just done once instead of after every character.
+  function setBeatText({ body, beat }, text) {
+    body._raw = String(text || '');
     const paras = body._raw.split(/\n\n/);
     body.innerHTML = '';
     paras.forEach((para, idx) => {
-      if (!para && idx < paras.length - 1) return; // skip empty except trailing
+      if (!para && idx < paras.length - 1) return;
       const p = document.createElement('p');
       p.textContent = para;
       body.appendChild(p);
     });
-    // Scroll to keep up with new content (throttle to every ~20 chars).
-    if (body._raw.length % 20 === 1) {
-      beat.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    }
+    beat.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }
 
-  // Read an SSE stream from our Edge Function.
-  // Calls onChar(ch) for each character, returns the [DONE] payload object.
-  async function readSSE(url, payload, onChar) {
+  // Post JSON to an Edge Function and return the parsed response body.
+  // Throws Error on non-OK responses or { ok:false } payloads.
+  async function postJSON(url, payload) {
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-
-    // Non-streaming error (e.g. missing API key, bad request)
-    if (!resp.ok || !resp.headers.get('content-type')?.includes('event-stream')) {
-      let data;
-      try { data = await resp.json(); } catch (_) {}
+    let data;
+    try { data = await resp.json(); } catch (_) {}
+    if (!resp.ok || !data || data.ok === false) {
       throw new Error(data?.error || `请求失败，HTTP ${resp.status}`);
     }
-
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let leftover = '';
-    let donePayload = null;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = leftover + decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n');
-      leftover = lines.pop();
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data:')) continue;
-        const raw = trimmed.slice(5).trim();
-        if (raw === '[DONE]') continue;
-        let evt;
-        try { evt = JSON.parse(raw); } catch (_) { continue; }
-
-        if (evt.type === 'error') throw new Error(evt.error || '未知错误');
-        if (evt.type === 'char')  { onChar(evt.char); continue; }
-        if (evt.type === 'done')  { donePayload = evt; continue; }
-      }
-    }
-
-    if (!donePayload) throw new Error('流式响应未正常结束，请重试。');
-    return donePayload;
+    return data;
   }
 
   // ============================================================
@@ -395,9 +363,8 @@
         streamCtx.beat.scrollIntoView({ behavior: 'smooth', block: 'start' })
       );
 
-      const done = await readSSE('/api/start', { genre: selectedGenre, seed },
-        (ch) => appendChar(streamCtx, ch)
-      );
+      const done = await postJSON('/api/start', { genre: selectedGenre, seed });
+      setBeatText(streamCtx, done.narrative);
 
       storyState  = done.state;
       lastChoices = done.choices || [];
@@ -435,9 +402,8 @@
         streamCtx.beat.scrollIntoView({ behavior: 'smooth', block: 'start' })
       );
 
-      const done = await readSSE('/api/continue', { state: storyState, action: text },
-        (ch) => appendChar(streamCtx, ch)
-      );
+      const done = await postJSON('/api/continue', { state: storyState, action: text });
+      setBeatText(streamCtx, done.narrative);
 
       storyState  = done.state;
       lastChoices = done.choices || [];
