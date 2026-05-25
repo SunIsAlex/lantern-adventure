@@ -3,14 +3,20 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Lantern · 文字冒险</title>
-<meta name="description" content="一个由 DeepSeek V4 Pro 驱动、部署在 EdgeOne Pages 上的中文文字冒险游戏。" />
+<title>提灯人 · 文字冒险</title>
+<meta name="description" content="在黑暗中点亮一盏提灯——一个由 AI 即兴讲述的中文文字冒险，每一个选择都通向不同的结局。" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link
   href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Noto+Serif+SC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
   rel="stylesheet"
 />
+<!-- LZ-String for compressing story state into shareable URL fragments.
+     Pinned version + SRI hash. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"
+        integrity="sha512-qtX0GLM3qX8rxJN1gyDfcnMFFrKvixfoEOwbBib9VafR5vbChV5LeE5wSI/x+IlCkTY5ZFddFDCCfaVJJNnuKQ=="
+        crossorigin="anonymous"
+        referrerpolicy="no-referrer"></script>
 
 <style>
   :root {
@@ -42,7 +48,6 @@
     overflow-x: hidden;
   }
 
-  /* Subtle film-grain overlay */
   body::before {
     content: '';
     position: fixed; inset: 0;
@@ -53,7 +58,6 @@
     z-index: 1;
     mix-blend-mode: overlay;
   }
-  /* Vignette */
   body::after {
     content: '';
     position: fixed; inset: 0;
@@ -115,7 +119,7 @@
     margin: 0;
   }
 
-  /* ---------- Setup panel ---------- */
+  /* ---------- Panels ---------- */
   .panel {
     background: linear-gradient(180deg, var(--ink-3), var(--ink-2));
     border: 1px solid var(--rule);
@@ -212,11 +216,11 @@
     transition: transform .1s, box-shadow .2s, filter .2s;
     box-shadow: 0 4px 14px rgba(216,146,58,.25);
   }
-  .btn:hover { filter: brightness(1.08); }
-  .btn:active { transform: translateY(1px); }
+  .btn:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn:active:not(:disabled) { transform: translateY(1px); }
   .btn:disabled {
     filter: grayscale(.6) brightness(.6);
-    cursor: wait;
+    cursor: not-allowed;
   }
   .btn.ghost {
     background: transparent;
@@ -226,9 +230,46 @@
     font-size: 14px;
     padding: 8px 14px;
   }
-  .btn.ghost:hover { color: var(--vellum); border-color: var(--vellum-muted); }
+  .btn.ghost:hover:not(:disabled) { color: var(--vellum); border-color: var(--vellum-muted); }
 
   .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+  /* ---------- Resume card ---------- */
+  .resume-card {
+    background: rgba(216,146,58,.06);
+    border: 1px solid rgba(216,146,58,.35);
+    border-radius: 2px;
+    padding: 18px 20px;
+    margin-bottom: 22px;
+    position: relative;
+  }
+  .resume-card h3 {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 500;
+    font-size: 19px;
+    margin: 0 0 4px;
+    color: var(--ember-bright);
+  }
+  .resume-card .resume-meta {
+    font-size: 12.5px;
+    color: var(--vellum-muted);
+    margin-bottom: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: .04em;
+  }
+  .resume-card .resume-excerpt {
+    font-style: italic;
+    color: var(--vellum-dim);
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 14px;
+    border-left: 2px solid var(--ember);
+    padding-left: 12px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 
   /* ---------- Story view ---------- */
   .scroll {
@@ -281,7 +322,7 @@
     color: var(--ember);
     font-weight: 500;
   }
-  .beat:not(:first-child) .narrative::first-letter { /* drop-cap only on opening */
+  .beat:not(:first-child) .narrative::first-letter {
     font-size: inherit; float: none; padding: 0; color: inherit; font-weight: inherit;
   }
 
@@ -413,6 +454,28 @@
     color: var(--rule);
   }
 
+  /* ---------- Toast ---------- */
+  .toast {
+    position: fixed;
+    left: 50%; bottom: 32px;
+    transform: translate(-50%, 20px);
+    background: rgba(20, 16, 12, 0.95);
+    color: var(--vellum);
+    padding: 11px 20px;
+    border-radius: 2px;
+    font-size: 13.5px;
+    border: 1px solid var(--ember);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease, transform .25s ease;
+    z-index: 1000;
+    max-width: 90vw;
+    text-align: center;
+    font-family: 'Noto Serif SC', serif;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
   /* ---------- Footer ---------- */
   footer {
     text-align: center;
@@ -425,8 +488,15 @@
   footer a { color: var(--ember); text-decoration: none; }
   footer a:hover { text-decoration: underline; }
 
-  /* The story container hides the setup panel after start */
   .hidden { display: none !important; }
+
+  .action-row {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 40px;
+  }
 </style>
 </head>
 <body>
@@ -440,6 +510,16 @@
 
   <!-- ===================== SETUP ===================== -->
   <section id="setup" class="panel">
+    <div id="resumeCard" class="resume-card hidden">
+      <h3>未完的故事还亮着光</h3>
+      <div class="resume-meta" id="resumeMeta"></div>
+      <div class="resume-excerpt" id="resumeExcerpt"></div>
+      <div class="row">
+        <button id="resumeBtn" class="btn" style="font-size:15px;padding:9px 18px;">继续</button>
+        <button id="discardBtn" class="btn ghost">丢弃，开始新故事</button>
+      </div>
+    </div>
+
     <h2>开启一段新的旅程</h2>
     <p class="hint">
       由 DeepSeek V4 Pro 即兴讲述。你可以选择题材、留下一句灵感，或者什么都不写、让命运自己抽签。
@@ -498,10 +578,15 @@
       </div>
     </div>
 
-    <div class="row" style="margin-top: 40px; justify-content: center;">
+    <div class="action-row">
+      <button id="shareBtn" class="btn ghost" title="生成可分享的链接（不会泄露你的 API Key）">
+        ⤴ 分享当前进度
+      </button>
       <button id="restartBtn" class="btn ghost">↺ 重新开始一段新故事</button>
     </div>
   </section>
+
+  <div id="toast" class="toast"></div>
 
   <footer>
     POWERED&nbsp;BY&nbsp;DEEPSEEK&nbsp;V4&nbsp;PRO &nbsp;·&nbsp; HOSTED&nbsp;ON&nbsp;EDGEONE&nbsp;PAGES
@@ -510,26 +595,143 @@
 
 <script>
 (() => {
-  // ---------- DOM ----------
+  // ============================================================
+  // DOM
+  // ============================================================
   const $ = (id) => document.getElementById(id);
-  const setupEl   = $('setup');
-  const gameEl    = $('game');
-  const scrollEl  = $('scroll');
-  const loadingEl = $('loading');
+  const setupEl     = $('setup');
+  const gameEl      = $('game');
+  const scrollEl    = $('scroll');
+  const loadingEl   = $('loading');
   const choicesWrap = $('choicesWrap');
-  const choicesEl = $('choices');
-  const freeInput = $('freeInput');
-  const freeBtn   = $('freeBtn');
-  const startBtn  = $('startBtn');
-  const restartBtn= $('restartBtn');
+  const choicesEl   = $('choices');
+  const freeInput   = $('freeInput');
+  const freeBtn     = $('freeBtn');
+  const startBtn    = $('startBtn');
+  const restartBtn  = $('restartBtn');
+  const shareBtn    = $('shareBtn');
   const setupStatus = $('setupStatus');
   const setupError  = $('setupError');
   const gameError   = $('gameError');
   const endingStamp = $('endingStamp');
   const seedInput   = $('seed');
+  const resumeCard  = $('resumeCard');
+  const resumeMeta  = $('resumeMeta');
+  const resumeExcerpt = $('resumeExcerpt');
+  const resumeBtn   = $('resumeBtn');
+  const discardBtn  = $('discardBtn');
+  const toastEl     = $('toast');
 
-  // ---------- Genre chips ----------
+  // ============================================================
+  // Persistence layer — localStorage (private) + URL fragment (shareable)
+  //
+  // Two layers, two purposes:
+  //   - localStorage : silent auto-save so refreshes / closing the tab don't
+  //                    lose progress. Only visible to this browser.
+  //   - URL fragment : the share button. Fragment, not query, so story
+  //                    content never hits the server or any CDN access log,
+  //                    and isn't truncated by EdgeOne's query-length limits.
+  //
+  // We use LZ-String's compressToEncodedURIComponent — already URL-safe, and
+  // it compresses repetitive Chinese dialogue history to ~30-40% of original,
+  // which buys us ~3x more shareable turns vs. plain base64.
+  // ============================================================
+  const SAVE_KEY     = 'lantern.save.v1';
+  const SAVE_VERSION = 1;
+  // Conservative shareable-URL size budget for the encoded fragment payload.
+  // ~6000 chars leaves plenty of room below the practical 8000-char URL ceiling
+  // once the origin + path + "#s=" prefix is included.
+  const SHARE_MAX_LEN = 6000;
+
+  // ============================================================
+  // Game state
+  // ============================================================
+  let storyState   = null;
+  let lastChoices  = [];
+  let storyEnded   = false;
+  let busy         = false;
   let selectedGenre = '';
+
+  function buildSave() {
+    if (!storyState) return null;
+    return {
+      v: SAVE_VERSION,
+      savedAt: Date.now(),
+      state: storyState,
+      lastChoices: lastChoices,
+      ended: storyEnded,
+    };
+  }
+
+  function saveLocal() {
+    if (!storyState) return;
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(buildSave()));
+    } catch (e) {
+      // Storage may be disabled (private mode) or full. Non-fatal.
+      console.warn('[save] localStorage write failed:', e);
+    }
+  }
+
+  function loadLocal() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return null;
+      const save = JSON.parse(raw);
+      if (!save || save.v !== SAVE_VERSION || !save.state) return null;
+      return save;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function clearLocal() {
+    try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+  }
+
+  // ----- URL fragment encoding -----
+  function encodeShare(save) {
+    if (typeof LZString === 'undefined') return null;
+    try {
+      return LZString.compressToEncodedURIComponent(JSON.stringify(save));
+    } catch (e) {
+      console.warn('[share] encode failed:', e);
+      return null;
+    }
+  }
+
+  function decodeShare(encoded) {
+    if (typeof LZString === 'undefined') return null;
+    try {
+      const json = LZString.decompressFromEncodedURIComponent(encoded);
+      if (!json) return null;
+      const save = JSON.parse(json);
+      if (!save || save.v !== SAVE_VERSION || !save.state) return null;
+      return save;
+    } catch (e) {
+      console.warn('[share] decode failed:', e);
+      return null;
+    }
+  }
+
+  function tryParseUrlFragment() {
+    const hash = window.location.hash || '';
+    const m = hash.match(/[#&]s=([^&]+)/);
+    if (!m) return null;
+    return decodeShare(m[1]);
+  }
+
+  function clearUrlFragment() {
+    // Strip the long fragment from the address bar after we've loaded it.
+    if (window.location.hash) {
+      const url = window.location.pathname + window.location.search;
+      history.replaceState(null, '', url);
+    }
+  }
+
+  // ============================================================
+  // Genre chips
+  // ============================================================
   document.querySelectorAll('#chips .chip').forEach((c) => {
     c.addEventListener('click', () => {
       document.querySelectorAll('#chips .chip').forEach(x => x.classList.remove('on'));
@@ -538,11 +740,9 @@
     });
   });
 
-  // ---------- Game state ----------
-  let storyState = null;   // returned from /api/start, mutated through /api/continue
-  let busy = false;
-
-  // ---------- Helpers ----------
+  // ============================================================
+  // UI helpers
+  // ============================================================
   function showSetupError(msg) {
     setupError.textContent = msg;
     setupError.classList.remove('hidden');
@@ -560,6 +760,14 @@
     gameError.textContent = '';
   }
 
+  let toastTimer = null;
+  function toast(msg, duration = 2500) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), duration);
+  }
+
   function setBusy(b) {
     busy = b;
     if (b) {
@@ -571,6 +779,7 @@
     document.querySelectorAll('#choices .choice').forEach(c => c.disabled = b);
     freeBtn.disabled = b;
     freeInput.disabled = b;
+    shareBtn.disabled = b;
   }
 
   function appendBeat({ kind, text, opening = false }) {
@@ -591,7 +800,6 @@
     } else {
       const body = document.createElement('div');
       body.className = 'narrative';
-      // Split on blank lines into <p> blocks so paragraph spacing renders.
       const paras = text.split(/\n{2,}/);
       paras.forEach((para) => {
         const p = document.createElement('p');
@@ -602,10 +810,7 @@
     }
 
     scrollEl.appendChild(beat);
-    // Smooth scroll to the new beat.
-    requestAnimationFrame(() => {
-      beat.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    return beat;
   }
 
   function renderChoices(choices) {
@@ -618,7 +823,7 @@
       const b = document.createElement('button');
       b.className = 'choice';
       b.type = 'button';
-      b.dataset.key = String.fromCharCode(65 + i); // A B C D
+      b.dataset.key = String.fromCharCode(65 + i);
       b.textContent = text;
       b.addEventListener('click', () => submitAction(text));
       choicesEl.appendChild(b);
@@ -628,11 +833,14 @@
   }
 
   function showEnding() {
+    storyEnded = true;
     endingStamp.classList.remove('hidden');
     choicesWrap.classList.add('hidden');
   }
 
-  // ---------- API calls ----------
+  // ============================================================
+  // API
+  // ============================================================
   async function postJSON(url, payload) {
     const resp = await fetch(url, {
       method: 'POST',
@@ -655,15 +863,19 @@
     try {
       const seed = seedInput.value.trim();
       const data = await postJSON('/api/start', { genre: selectedGenre, seed });
-      // Transition: hide setup, reveal game.
-      setupEl.classList.add('hidden');
-      gameEl.classList.remove('hidden');
-      endingStamp.classList.add('hidden');
+
+      enterGameView();
       scrollEl.innerHTML = '';
 
-      storyState = data.state;
-      appendBeat({ kind: 'narrator', text: data.opening, opening: true });
-      renderChoices(data.choices);
+      storyState  = data.state;
+      lastChoices = data.choices || [];
+      storyEnded  = false;
+
+      const beat = appendBeat({ kind: 'narrator', text: data.opening, opening: true });
+      requestAnimationFrame(() => beat.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      renderChoices(lastChoices);
+
+      saveLocal();
     } catch (err) {
       showSetupError(err.message || String(err));
     } finally {
@@ -678,7 +890,8 @@
     if (!text) return;
 
     clearGameError();
-    appendBeat({ kind: 'user', text });
+    const userBeat = appendBeat({ kind: 'user', text });
+    requestAnimationFrame(() => userBeat.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     setBusy(true);
 
     try {
@@ -686,28 +899,116 @@
         state: storyState,
         action: text,
       });
-      storyState = data.state;
-      appendBeat({ kind: 'narrator', text: data.narrative });
+      storyState  = data.state;
+      lastChoices = data.choices || [];
+
+      const narratorBeat = appendBeat({ kind: 'narrator', text: data.narrative });
+      requestAnimationFrame(() => narratorBeat.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+
       if (data.ended) {
         showEnding();
       } else {
-        renderChoices(data.choices);
+        renderChoices(lastChoices);
       }
+
+      saveLocal();
     } catch (err) {
       showGameError(err.message || String(err));
-      // Re-render the previous choices so the player isn't stuck.
-      const lastBeat = scrollEl.querySelector('.beat:last-child');
-      if (lastBeat && choicesEl.children.length === 0) {
-        // nothing to restore; let them try the free input
-        choicesWrap.classList.remove('hidden');
-      }
+      // Re-show previous choices so the user can retry instead of being stuck.
+      if (lastChoices.length) renderChoices(lastChoices);
+      else choicesWrap.classList.remove('hidden');
     } finally {
       setBusy(false);
     }
   }
 
+  // ============================================================
+  // Resume / restart
+  // ============================================================
+  function enterGameView() {
+    setupEl.classList.add('hidden');
+    gameEl.classList.remove('hidden');
+    endingStamp.classList.add('hidden');
+    storyEnded = false;
+  }
+
+  function rebuildStoryFromState(state) {
+    scrollEl.innerHTML = '';
+    const history = Array.isArray(state.history) ? state.history : [];
+    history.forEach((beat, idx) => {
+      if (beat.role === 'assistant') {
+        appendBeat({ kind: 'narrator', text: beat.text, opening: idx === 0 });
+      } else if (beat.role === 'user') {
+        appendBeat({ kind: 'user', text: beat.text });
+      }
+      // 'system' notes (history-elision markers) are skipped in the UI.
+    });
+  }
+
+  function loadSave(save, { fromShare = false } = {}) {
+    storyState  = save.state;
+    lastChoices = save.lastChoices || [];
+    storyEnded  = !!save.ended;
+
+    enterGameView();
+    rebuildStoryFromState(storyState);
+
+    if (storyEnded) {
+      showEnding();
+    } else {
+      renderChoices(lastChoices);
+    }
+
+    // Always re-save locally — a shared link becomes the recipient's own save.
+    saveLocal();
+
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    });
+
+    if (fromShare) {
+      toast('已载入分享的故事进度');
+      clearUrlFragment();
+    }
+  }
+
+  function showResumeCard(save) {
+    const history = save.state?.history || [];
+    const turns = history.filter(b => b.role === 'user').length;
+    const title = save.state?.title || '无名故事';
+    const genre = save.state?.genre || '';
+    const lastAssistant = [...history].reverse().find(b => b.role === 'assistant');
+    const excerpt = lastAssistant ? lastAssistant.text.replace(/\n+/g, ' ') : '';
+
+    const when = new Date(save.savedAt || Date.now());
+    const whenStr = `${when.getMonth() + 1}月${when.getDate()}日 ${String(when.getHours()).padStart(2,'0')}:${String(when.getMinutes()).padStart(2,'0')}`;
+
+    resumeMeta.textContent = `${title}${genre ? ' · ' + genre : ''} · 已进行 ${turns} 个回合 · ${whenStr}`;
+    resumeExcerpt.textContent = excerpt;
+    resumeCard.classList.remove('hidden');
+  }
+
+  resumeBtn.addEventListener('click', () => {
+    const save = loadLocal();
+    if (!save) {
+      resumeCard.classList.add('hidden');
+      return;
+    }
+    loadSave(save);
+  });
+
+  discardBtn.addEventListener('click', () => {
+    if (!confirm('确认丢弃当前存档？这一段故事将无法再找回。')) return;
+    clearLocal();
+    resumeCard.classList.add('hidden');
+  });
+
   function restart() {
-    storyState = null;
+    // Don't auto-wipe the save here. The new story will overwrite it as
+    // it progresses; if the player abandons mid-setup, the old save remains.
+    storyState   = null;
+    lastChoices  = [];
+    storyEnded   = false;
     scrollEl.innerHTML = '';
     choicesEl.innerHTML = '';
     endingStamp.classList.add('hidden');
@@ -716,12 +1017,59 @@
     setupEl.classList.remove('hidden');
     clearGameError();
     clearSetupError();
+    const save = loadLocal();
+    if (save) showResumeCard(save);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // ---------- Wire up ----------
+  // ============================================================
+  // Share
+  // ============================================================
+  async function shareProgress() {
+    if (!storyState) return;
+    const encoded = encodeShare(buildSave());
+
+    if (!encoded) {
+      toast('生成分享链接失败，请重试');
+      return;
+    }
+
+    if (encoded.length > SHARE_MAX_LEN) {
+      toast('故事太长，无法直接分享。建议玩到结局或截图分享。', 4000);
+      return;
+    }
+
+    const url = `${window.location.origin}${window.location.pathname}#s=${encoded}`;
+
+    // Prefer native share sheet on mobile; fall back to clipboard.
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `提灯人 · ${storyState.title || '一段未完的故事'}`,
+          text: '在这盏灯下，我留了一段故事给你——',
+          url,
+        });
+        return;
+      } catch (e) {
+        if (e?.name === 'AbortError') return;
+        // Otherwise fall through to clipboard.
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
+      toast(`链接已复制（${encoded.length.toLocaleString()} 字符）`);
+    } catch (e) {
+      prompt('复制下面的链接分享给朋友：', url);
+    }
+  }
+
+  // ============================================================
+  // Wire up
+  // ============================================================
   startBtn.addEventListener('click', startStory);
   restartBtn.addEventListener('click', restart);
+  shareBtn.addEventListener('click', shareProgress);
   freeBtn.addEventListener('click', () => {
     const v = freeInput.value.trim();
     if (v) submitAction(v);
@@ -732,7 +1080,6 @@
       freeBtn.click();
     }
   });
-  // Pressing A/B/C/D as a keyboard shortcut
   document.addEventListener('keydown', (e) => {
     if (busy || gameEl.classList.contains('hidden')) return;
     if (document.activeElement === freeInput) return;
@@ -746,6 +1093,25 @@
       }
     }
   });
+
+  // ============================================================
+  // Boot
+  //   1. URL fragment (shared link) wins — overrides local save
+  //   2. localStorage  → show resume card; user decides
+  //   3. Otherwise: fresh start
+  // ============================================================
+  (function boot() {
+    const shared = tryParseUrlFragment();
+    if (shared) {
+      loadSave(shared, { fromShare: true });
+      return;
+    }
+    const local = loadLocal();
+    if (local) {
+      showResumeCard(local);
+    }
+  })();
+
 })();
 </script>
 </body>
