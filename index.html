@@ -11,12 +11,6 @@
   href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Noto+Serif+SC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
   rel="stylesheet"
 />
-<!-- LZ-String for compressing story state into shareable URL fragments.
-     Pinned version + SRI hash. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"
-        integrity="sha512-qtX0GLM3qX8rxJN1gyDfcnMFFrKvixfoEOwbBib9VafR5vbChV5LeE5wSI/x+IlCkTY5ZFddFDCCfaVJJNnuKQ=="
-        crossorigin="anonymous"
-        referrerpolicy="no-referrer"></script>
 
 <style>
   :root {
@@ -690,21 +684,67 @@
   }
 
   // ----- URL fragment encoding -----
-  function encodeShare(save) {
-    if (typeof LZString === 'undefined') return null;
+  //
+  // We use the browser's built-in CompressionStream (Baseline Widely Available
+  // since May 2023, supported by all engines: Chrome/Edge/Firefox/Safari).
+  // No external library needed — earlier we tried LZ-String from a CDN but the
+  // SRI hash + China-mainland CDN reachability made it brittle.
+  //
+  // Pipeline: JSON → UTF-8 bytes → deflate-raw → base64url
+  // - deflate-raw skips the zlib header/checksum (2 + 4 bytes saved vs deflate,
+  //   and 18 bytes saved vs gzip), which matters because every byte costs ~1.33
+  //   characters in URL-safe base64.
+  // - base64url ('-', '_', no '=' padding) is fully URL-safe inside a fragment.
+
+  function bytesToBase64Url(bytes) {
+    // btoa needs a binary string; build it in 8K chunks to avoid call-stack
+    // limits on long inputs.
+    let bin = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function base64UrlToBytes(str) {
+    const padded = str.replace(/-/g, '+').replace(/_/g, '/') +
+                   '==='.slice((str.length + 3) % 4);
+    const bin = atob(padded);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+
+  async function deflate(bytes) {
+    const stream = new Blob([bytes]).stream()
+      .pipeThrough(new CompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  async function inflate(bytes) {
+    const stream = new Blob([bytes]).stream()
+      .pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  async function encodeShare(save) {
     try {
-      return LZString.compressToEncodedURIComponent(JSON.stringify(save));
+      const json = JSON.stringify(save);
+      const utf8 = new TextEncoder().encode(json);
+      const compressed = await deflate(utf8);
+      return bytesToBase64Url(compressed);
     } catch (e) {
       console.warn('[share] encode failed:', e);
       return null;
     }
   }
 
-  function decodeShare(encoded) {
-    if (typeof LZString === 'undefined') return null;
+  async function decodeShare(encoded) {
     try {
-      const json = LZString.decompressFromEncodedURIComponent(encoded);
-      if (!json) return null;
+      const compressed = base64UrlToBytes(encoded);
+      const utf8 = await inflate(compressed);
+      const json = new TextDecoder().decode(utf8);
       const save = JSON.parse(json);
       if (!save || save.v !== SAVE_VERSION || !save.state) return null;
       return save;
@@ -714,11 +754,11 @@
     }
   }
 
-  function tryParseUrlFragment() {
+  async function tryParseUrlFragment() {
     const hash = window.location.hash || '';
     const m = hash.match(/[#&]s=([^&]+)/);
     if (!m) return null;
-    return decodeShare(m[1]);
+    return await decodeShare(m[1]);
   }
 
   function clearUrlFragment() {
@@ -1027,7 +1067,7 @@
   // ============================================================
   async function shareProgress() {
     if (!storyState) return;
-    const encoded = encodeShare(buildSave());
+    const encoded = await encodeShare(buildSave());
 
     if (!encoded) {
       toast('生成分享链接失败，请重试');
@@ -1100,8 +1140,8 @@
   //   2. localStorage  → show resume card; user decides
   //   3. Otherwise: fresh start
   // ============================================================
-  (function boot() {
-    const shared = tryParseUrlFragment();
+  (async function boot() {
+    const shared = await tryParseUrlFragment();
     if (shared) {
       loadSave(shared, { fromShare: true });
       return;
