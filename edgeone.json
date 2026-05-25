@@ -1,6 +1,7 @@
-{
-  "$schema": "https://pages.edgeone.com/schemas/edgeone.json",
-  "build": {
-    "output": "."
+{ 
+  "cloudFunctions": {
+    "nodejs": {
+      "maxDuration": 120
+    }
   }
 }
