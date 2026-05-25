@@ -133,6 +133,12 @@ async function callDeepSeekJSON(apiKey, messages, opts = {}) {
     max_tokens: opts.max_tokens ?? 1400,
     response_format: { type: 'json_object' },
     stream: false,
+    // DeepSeek V4 enables thinking mode by default. For creative writing we want:
+    //   - fast responses (thinking adds 10-60s of latency),
+    //   - working temperature/top_p (thinking mode silently ignores them),
+    //   - lower bills (reasoning tokens are billed as output).
+    // So we turn it off explicitly.
+    thinking: { type: 'disabled' },
   };
 
   const resp = await fetch(DEEPSEEK_URL, {
@@ -142,6 +148,15 @@ async function callDeepSeekJSON(apiKey, messages, opts = {}) {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
+    // EdgeOne-specific: default fetch timeout is 15s, max is 300s.
+    // DeepSeek V4 Pro generating ~200 Chinese chars + JSON regularly takes 20-40s.
+    eo: {
+      timeoutSetting: {
+        connectTimeout: 5000,    // ms — TCP connect
+        readTimeout: 120000,     // ms — wait for response body
+        writeTimeout: 5000,      // ms — finish sending request body
+      },
+    },
   });
 
   if (!resp.ok) {
