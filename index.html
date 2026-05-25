@@ -1,0 +1,752 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>The Lantern · 文字冒险</title>
+<meta name="description" content="一个由 DeepSeek V4 Pro 驱动、部署在 EdgeOne Pages 上的中文文字冒险游戏。" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Noto+Serif+SC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+  rel="stylesheet"
+/>
+
+<style>
+  :root {
+    --ink:          #0e0b08;
+    --ink-2:        #161210;
+    --ink-3:        #1f1916;
+    --vellum:       #ece2cc;
+    --vellum-dim:   #b9ad94;
+    --vellum-muted: #786a55;
+    --ember:        #d8923a;
+    --ember-bright: #f3b35a;
+    --blood:        #8a3a2a;
+    --rule:         #3a2f24;
+    --shadow:       0 30px 80px -20px rgba(0,0,0,.7), 0 4px 12px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(ellipse at 30% 0%, #2a1f17 0%, var(--ink) 55%) no-repeat,
+      var(--ink);
+    color: var(--vellum);
+    font-family: 'Noto Serif SC', 'Cormorant Garamond', Georgia, serif;
+    font-size: 17px;
+    line-height: 1.85;
+    overflow-x: hidden;
+  }
+
+  /* Subtle film-grain overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    pointer-events: none;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(236,226,204,.04) 1px, transparent 0);
+    background-size: 3px 3px;
+    z-index: 1;
+    mix-blend-mode: overlay;
+  }
+  /* Vignette */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 200px 40px rgba(0,0,0,.65);
+    z-index: 2;
+  }
+
+  .stage {
+    position: relative;
+    z-index: 3;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 56px 28px 120px;
+  }
+
+  /* ---------- Header ---------- */
+  header.masthead {
+    text-align: center;
+    margin-bottom: 56px;
+    position: relative;
+  }
+  .ornament {
+    display: flex; align-items: center; justify-content: center; gap: 14px;
+    color: var(--ember);
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    font-size: 11px;
+    opacity: .85;
+  }
+  .ornament::before, .ornament::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--rule), transparent);
+    max-width: 90px;
+  }
+  h1.title {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 500;
+    font-size: clamp(46px, 8vw, 72px);
+    line-height: 1;
+    margin: 18px 0 4px;
+    color: var(--vellum);
+    letter-spacing: -.01em;
+  }
+  h1.title .amp {
+    font-style: italic;
+    color: var(--ember);
+    font-weight: 400;
+  }
+  .tagline {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 17px;
+    color: var(--vellum-dim);
+    margin: 0;
+  }
+
+  /* ---------- Setup panel ---------- */
+  .panel {
+    background: linear-gradient(180deg, var(--ink-3), var(--ink-2));
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 28px 26px 30px;
+    margin-bottom: 28px;
+    box-shadow: var(--shadow);
+    position: relative;
+  }
+  .panel::before {
+    content: '';
+    position: absolute; inset: 4px;
+    border: 1px solid rgba(216,146,58,.18);
+    border-radius: 1px;
+    pointer-events: none;
+  }
+  .panel h2 {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 500;
+    font-size: 22px;
+    margin: 0 0 6px;
+    color: var(--ember-bright);
+    letter-spacing: .02em;
+  }
+  .panel p.hint {
+    margin: 0 0 18px;
+    color: var(--vellum-muted);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .field { margin-bottom: 14px; }
+  label.field-label {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    color: var(--vellum-muted);
+    margin-bottom: 6px;
+  }
+  input.text, textarea.text {
+    width: 100%;
+    background: var(--ink);
+    border: 1px solid var(--rule);
+    color: var(--vellum);
+    font-family: 'Noto Serif SC', serif;
+    font-size: 15px;
+    padding: 11px 13px;
+    border-radius: 2px;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+    resize: vertical;
+  }
+  input.text:focus, textarea.text:focus {
+    border-color: var(--ember);
+    box-shadow: 0 0 0 1px rgba(216,146,58,.3);
+  }
+
+  .genre-chips {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin-top: 4px;
+  }
+  .chip {
+    background: transparent;
+    border: 1px solid var(--rule);
+    color: var(--vellum-dim);
+    font-family: 'Noto Serif SC', serif;
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .chip:hover { color: var(--vellum); border-color: var(--vellum-muted); }
+  .chip.on {
+    color: var(--ember-bright);
+    border-color: var(--ember);
+    background: rgba(216,146,58,.08);
+  }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    appearance: none;
+    background: linear-gradient(180deg, var(--ember), #b77527);
+    color: #1a0f04;
+    border: 1px solid #6b4112;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    padding: 12px 22px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: transform .1s, box-shadow .2s, filter .2s;
+    box-shadow: 0 4px 14px rgba(216,146,58,.25);
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled {
+    filter: grayscale(.6) brightness(.6);
+    cursor: wait;
+  }
+  .btn.ghost {
+    background: transparent;
+    color: var(--vellum-dim);
+    border: 1px solid var(--rule);
+    box-shadow: none;
+    font-size: 14px;
+    padding: 8px 14px;
+  }
+  .btn.ghost:hover { color: var(--vellum); border-color: var(--vellum-muted); }
+
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+  /* ---------- Story view ---------- */
+  .scroll {
+    display: flex; flex-direction: column; gap: 36px;
+  }
+  .beat {
+    animation: fadeUp .8s ease both;
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .beat-meta {
+    display: flex; align-items: center; gap: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    color: var(--vellum-muted);
+    margin-bottom: 14px;
+  }
+  .beat-meta .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--ember);
+    box-shadow: 0 0 8px var(--ember);
+  }
+  .beat-meta.user .dot { background: var(--blood); box-shadow: 0 0 8px var(--blood); }
+  .beat-meta hr {
+    flex: 1;
+    border: none;
+    border-top: 1px dashed var(--rule);
+    margin: 0;
+  }
+
+  .narrative {
+    font-size: 18px;
+    line-height: 1.95;
+    color: var(--vellum);
+    white-space: pre-wrap;
+  }
+  .narrative p { margin: 0 0 1em; }
+  .narrative p:last-child { margin-bottom: 0; }
+  .narrative::first-letter {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 3.2em;
+    line-height: .9;
+    float: left;
+    padding: 6px 10px 0 0;
+    color: var(--ember);
+    font-weight: 500;
+  }
+  .beat:not(:first-child) .narrative::first-letter { /* drop-cap only on opening */
+    font-size: inherit; float: none; padding: 0; color: inherit; font-weight: inherit;
+  }
+
+  .player-action {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 18px;
+    color: var(--vellum-dim);
+    border-left: 2px solid var(--blood);
+    padding: 4px 0 4px 18px;
+    margin: 0;
+  }
+  .player-action::before {
+    content: '› ';
+    color: var(--blood);
+    font-style: normal;
+    font-weight: 600;
+  }
+
+  /* ---------- Choice cards ---------- */
+  .choices {
+    margin-top: 36px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  @media (min-width: 560px) {
+    .choices { grid-template-columns: 1fr 1fr; }
+  }
+
+  .choice {
+    appearance: none;
+    text-align: left;
+    background: var(--ink-2);
+    color: var(--vellum);
+    border: 1px solid var(--rule);
+    padding: 16px 18px 16px 46px;
+    font-family: 'Noto Serif SC', serif;
+    font-size: 15.5px;
+    line-height: 1.55;
+    cursor: pointer;
+    position: relative;
+    border-radius: 2px;
+    transition: all .18s ease;
+  }
+  .choice::before {
+    content: attr(data-key);
+    position: absolute;
+    left: 14px; top: 50%;
+    transform: translateY(-50%);
+    width: 22px; height: 22px;
+    border: 1px solid var(--ember);
+    color: var(--ember);
+    border-radius: 50%;
+    display: grid; place-items: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    transition: all .18s ease;
+  }
+  .choice:hover {
+    border-color: var(--ember);
+    background: rgba(216,146,58,.06);
+    transform: translateX(2px);
+  }
+  .choice:hover::before {
+    background: var(--ember);
+    color: var(--ink);
+  }
+  .choice:disabled { cursor: wait; opacity: .5; }
+
+  /* ---------- Free input ---------- */
+  .freeform {
+    margin-top: 18px;
+    border-top: 1px dashed var(--rule);
+    padding-top: 18px;
+  }
+  .freeform label {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    color: var(--vellum-muted);
+    margin-bottom: 8px;
+  }
+  .freeform .row { gap: 8px; }
+  .freeform input.text { flex: 1; min-width: 200px; }
+
+  /* ---------- Status / loading ---------- */
+  .status {
+    text-align: center;
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    color: var(--vellum-dim);
+    margin: 18px 0;
+    font-size: 16px;
+  }
+  .status .dots span {
+    display: inline-block;
+    animation: blink 1.4s infinite both;
+  }
+  .status .dots span:nth-child(2) { animation-delay: .2s; }
+  .status .dots span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%,80%,100%{opacity:.2} 40%{opacity:1} }
+
+  .error {
+    background: rgba(138,58,42,.12);
+    border: 1px solid var(--blood);
+    color: #f0c2b3;
+    padding: 12px 14px;
+    border-radius: 2px;
+    font-size: 14px;
+    margin: 16px 0;
+  }
+
+  .ending-stamp {
+    text-align: center;
+    margin-top: 40px;
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 32px;
+    color: var(--ember);
+    letter-spacing: .3em;
+    opacity: 0;
+    animation: fadeUp 1.6s 0.4s ease both;
+  }
+  .ending-stamp::before, .ending-stamp::after {
+    content: ' · ';
+    color: var(--rule);
+  }
+
+  /* ---------- Footer ---------- */
+  footer {
+    text-align: center;
+    margin-top: 60px;
+    color: var(--vellum-muted);
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: .15em;
+  }
+  footer a { color: var(--ember); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  /* The story container hides the setup panel after start */
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<main class="stage">
+
+  <header class="masthead">
+    <div class="ornament">A Text Adventure</div>
+    <h1 class="title">提<span class="amp">灯</span>人</h1>
+    <p class="tagline">A lantern in the dark — your story begins where you choose.</p>
+  </header>
+
+  <!-- ===================== SETUP ===================== -->
+  <section id="setup" class="panel">
+    <h2>开启一段新的旅程</h2>
+    <p class="hint">
+      由 DeepSeek V4 Pro 即兴讲述。你可以选择题材、留下一句灵感，或者什么都不写、让命运自己抽签。
+    </p>
+
+    <div class="field">
+      <label class="field-label">题材（可选）</label>
+      <div class="genre-chips" id="chips">
+        <button type="button" class="chip" data-g="">随机</button>
+        <button type="button" class="chip" data-g="蒸汽朋克悬疑">蒸汽朋克</button>
+        <button type="button" class="chip" data-g="赛博朋克">赛博朋克</button>
+        <button type="button" class="chip" data-g="克苏鲁神话">克苏鲁</button>
+        <button type="button" class="chip" data-g="武侠">武侠</button>
+        <button type="button" class="chip" data-g="末日废土">废土</button>
+        <button type="button" class="chip" data-g="维多利亚悬疑">维多利亚</button>
+        <button type="button" class="chip" data-g="太空歌剧">太空歌剧</button>
+        <button type="button" class="chip" data-g="北欧神话">北欧神话</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">灵感种子（可选）</label>
+      <input id="seed" class="text" type="text" maxlength="200"
+        placeholder="例如：一只会说话的乌鸦、一封迟到了三十年的信、地下铁的最后一班车……" />
+    </div>
+
+    <div class="row" style="margin-top: 18px;">
+      <button id="startBtn" class="btn">点亮提灯 ✦</button>
+      <span id="setupStatus" class="status" style="margin: 0;"></span>
+    </div>
+    <div id="setupError" class="error hidden"></div>
+  </section>
+
+  <!-- ===================== GAME ===================== -->
+  <section id="game" class="hidden">
+    <div id="scroll" class="scroll"></div>
+
+    <div id="loading" class="status hidden">
+      笔尖正在润墨<span class="dots"><span>.</span><span>.</span><span>.</span></span>
+    </div>
+
+    <div id="gameError" class="error hidden"></div>
+
+    <div id="endingStamp" class="ending-stamp hidden">F I N</div>
+
+    <div id="choicesWrap" class="hidden">
+      <div id="choices" class="choices"></div>
+
+      <div class="freeform">
+        <label>……或者，写下你想做的事</label>
+        <div class="row">
+          <input id="freeInput" class="text" type="text" maxlength="200"
+            placeholder="例如：我假装认识他，伸手拥抱过去" />
+          <button id="freeBtn" class="btn ghost" style="font-size:14px;padding:9px 16px;">提交</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top: 40px; justify-content: center;">
+      <button id="restartBtn" class="btn ghost">↺ 重新开始一段新故事</button>
+    </div>
+  </section>
+
+  <footer>
+    POWERED&nbsp;BY&nbsp;DEEPSEEK&nbsp;V4&nbsp;PRO &nbsp;·&nbsp; HOSTED&nbsp;ON&nbsp;EDGEONE&nbsp;PAGES
+  </footer>
+</main>
+
+<script>
+(() => {
+  // ---------- DOM ----------
+  const $ = (id) => document.getElementById(id);
+  const setupEl   = $('setup');
+  const gameEl    = $('game');
+  const scrollEl  = $('scroll');
+  const loadingEl = $('loading');
+  const choicesWrap = $('choicesWrap');
+  const choicesEl = $('choices');
+  const freeInput = $('freeInput');
+  const freeBtn   = $('freeBtn');
+  const startBtn  = $('startBtn');
+  const restartBtn= $('restartBtn');
+  const setupStatus = $('setupStatus');
+  const setupError  = $('setupError');
+  const gameError   = $('gameError');
+  const endingStamp = $('endingStamp');
+  const seedInput   = $('seed');
+
+  // ---------- Genre chips ----------
+  let selectedGenre = '';
+  document.querySelectorAll('#chips .chip').forEach((c) => {
+    c.addEventListener('click', () => {
+      document.querySelectorAll('#chips .chip').forEach(x => x.classList.remove('on'));
+      c.classList.add('on');
+      selectedGenre = c.dataset.g || '';
+    });
+  });
+
+  // ---------- Game state ----------
+  let storyState = null;   // returned from /api/start, mutated through /api/continue
+  let busy = false;
+
+  // ---------- Helpers ----------
+  function showSetupError(msg) {
+    setupError.textContent = msg;
+    setupError.classList.remove('hidden');
+  }
+  function clearSetupError() {
+    setupError.classList.add('hidden');
+    setupError.textContent = '';
+  }
+  function showGameError(msg) {
+    gameError.textContent = msg;
+    gameError.classList.remove('hidden');
+  }
+  function clearGameError() {
+    gameError.classList.add('hidden');
+    gameError.textContent = '';
+  }
+
+  function setBusy(b) {
+    busy = b;
+    if (b) {
+      loadingEl.classList.remove('hidden');
+      choicesWrap.classList.add('hidden');
+    } else {
+      loadingEl.classList.add('hidden');
+    }
+    document.querySelectorAll('#choices .choice').forEach(c => c.disabled = b);
+    freeBtn.disabled = b;
+    freeInput.disabled = b;
+  }
+
+  function appendBeat({ kind, text, opening = false }) {
+    const beat = document.createElement('article');
+    beat.className = 'beat';
+
+    const meta = document.createElement('div');
+    meta.className = 'beat-meta ' + (kind === 'user' ? 'user' : 'narrator');
+    const label = kind === 'user' ? '你的行动' : (opening ? '楔子' : '续章');
+    meta.innerHTML = `<span class="dot"></span><span>${label}</span><hr/>`;
+    beat.appendChild(meta);
+
+    if (kind === 'user') {
+      const p = document.createElement('p');
+      p.className = 'player-action';
+      p.textContent = text;
+      beat.appendChild(p);
+    } else {
+      const body = document.createElement('div');
+      body.className = 'narrative';
+      // Split on blank lines into <p> blocks so paragraph spacing renders.
+      const paras = text.split(/\n{2,}/);
+      paras.forEach((para) => {
+        const p = document.createElement('p');
+        p.textContent = para.trim();
+        body.appendChild(p);
+      });
+      beat.appendChild(body);
+    }
+
+    scrollEl.appendChild(beat);
+    // Smooth scroll to the new beat.
+    requestAnimationFrame(() => {
+      beat.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  function renderChoices(choices) {
+    choicesEl.innerHTML = '';
+    if (!choices || !choices.length) {
+      choicesWrap.classList.add('hidden');
+      return;
+    }
+    choices.forEach((text, i) => {
+      const b = document.createElement('button');
+      b.className = 'choice';
+      b.type = 'button';
+      b.dataset.key = String.fromCharCode(65 + i); // A B C D
+      b.textContent = text;
+      b.addEventListener('click', () => submitAction(text));
+      choicesEl.appendChild(b);
+    });
+    freeInput.value = '';
+    choicesWrap.classList.remove('hidden');
+  }
+
+  function showEnding() {
+    endingStamp.classList.remove('hidden');
+    choicesWrap.classList.add('hidden');
+  }
+
+  // ---------- API calls ----------
+  async function postJSON(url, payload) {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    let data;
+    try { data = await resp.json(); }
+    catch { throw new Error('服务器返回了非 JSON 响应（HTTP ' + resp.status + '）'); }
+    if (!resp.ok || !data.ok) {
+      throw new Error(data?.error || ('请求失败，HTTP ' + resp.status));
+    }
+    return data.data;
+  }
+
+  async function startStory() {
+    clearSetupError();
+    startBtn.disabled = true;
+    setupStatus.innerHTML = '提灯正在点亮<span class="dots"><span>.</span><span>.</span><span>.</span></span>';
+    try {
+      const seed = seedInput.value.trim();
+      const data = await postJSON('/api/start', { genre: selectedGenre, seed });
+      // Transition: hide setup, reveal game.
+      setupEl.classList.add('hidden');
+      gameEl.classList.remove('hidden');
+      endingStamp.classList.add('hidden');
+      scrollEl.innerHTML = '';
+
+      storyState = data.state;
+      appendBeat({ kind: 'narrator', text: data.opening, opening: true });
+      renderChoices(data.choices);
+    } catch (err) {
+      showSetupError(err.message || String(err));
+    } finally {
+      startBtn.disabled = false;
+      setupStatus.textContent = '';
+    }
+  }
+
+  async function submitAction(action) {
+    if (busy || !storyState) return;
+    const text = String(action || '').trim();
+    if (!text) return;
+
+    clearGameError();
+    appendBeat({ kind: 'user', text });
+    setBusy(true);
+
+    try {
+      const data = await postJSON('/api/continue', {
+        state: storyState,
+        action: text,
+      });
+      storyState = data.state;
+      appendBeat({ kind: 'narrator', text: data.narrative });
+      if (data.ended) {
+        showEnding();
+      } else {
+        renderChoices(data.choices);
+      }
+    } catch (err) {
+      showGameError(err.message || String(err));
+      // Re-render the previous choices so the player isn't stuck.
+      const lastBeat = scrollEl.querySelector('.beat:last-child');
+      if (lastBeat && choicesEl.children.length === 0) {
+        // nothing to restore; let them try the free input
+        choicesWrap.classList.remove('hidden');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function restart() {
+    storyState = null;
+    scrollEl.innerHTML = '';
+    choicesEl.innerHTML = '';
+    endingStamp.classList.add('hidden');
+    choicesWrap.classList.add('hidden');
+    gameEl.classList.add('hidden');
+    setupEl.classList.remove('hidden');
+    clearGameError();
+    clearSetupError();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ---------- Wire up ----------
+  startBtn.addEventListener('click', startStory);
+  restartBtn.addEventListener('click', restart);
+  freeBtn.addEventListener('click', () => {
+    const v = freeInput.value.trim();
+    if (v) submitAction(v);
+  });
+  freeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.isComposing) {
+      e.preventDefault();
+      freeBtn.click();
+    }
+  });
+  // Pressing A/B/C/D as a keyboard shortcut
+  document.addEventListener('keydown', (e) => {
+    if (busy || gameEl.classList.contains('hidden')) return;
+    if (document.activeElement === freeInput) return;
+    const k = e.key.toUpperCase();
+    if (['A','B','C','D'].includes(k)) {
+      const idx = k.charCodeAt(0) - 65;
+      const buttons = choicesEl.querySelectorAll('.choice');
+      if (buttons[idx]) {
+        e.preventDefault();
+        buttons[idx].click();
+      }
+    }
+  });
+})();
+</script>
+</body>
+</html>
