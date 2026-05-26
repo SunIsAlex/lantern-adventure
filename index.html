@@ -274,6 +274,9 @@
     color: var(--vellum-dim);
     margin: 18px 0;
     font-size: 16px;
+    /* Lantern flicker: irregular brightness + warm glow that wavers like a
+       candle. The asymmetric keyframe stops keep it from looking metronomic. */
+    animation: lantern-flicker 3.2s infinite ease-in-out;
   }
   .status .dots span {
     display: inline-block;
@@ -282,6 +285,16 @@
   .status .dots span:nth-child(2) { animation-delay: .2s; }
   .status .dots span:nth-child(3) { animation-delay: .4s; }
   @keyframes blink { 0%,80%,100%{opacity:.2} 40%{opacity:1} }
+  @keyframes lantern-flicker {
+    0%   { opacity: 1;    text-shadow: 0 0 8px rgba(243,179,90,.45); }
+    14%  { opacity: .68;  text-shadow: 0 0 3px rgba(243,179,90,.15); }
+    29%  { opacity: .95;  text-shadow: 0 0 7px rgba(243,179,90,.40); }
+    42%  { opacity: .55;  text-shadow: 0 0 2px rgba(243,179,90,.10); }
+    57%  { opacity: 1;    text-shadow: 0 0 9px rgba(243,179,90,.50); }
+    71%  { opacity: .78;  text-shadow: 0 0 5px rgba(243,179,90,.25); }
+    85%  { opacity: .92;  text-shadow: 0 0 6px rgba(243,179,90,.35); }
+    100% { opacity: 1;    text-shadow: 0 0 8px rgba(243,179,90,.45); }
+  }
 
   .error {
     background: rgba(138,58,42,.12);
@@ -347,7 +360,7 @@
         <button type="button" class="chip" data-g="末日废土">废土</button>
         <button type="button" class="chip" data-g="维多利亚悬疑">维多利亚</button>
         <button type="button" class="chip" data-g="太空歌剧">太空歌剧</button>
-        <button type="button" class="chip" data-g="异世界">异世界</button>
+        <button type="button" class="chip" data-g="北欧神话">北欧神话</button>
       </div>
     </div>
 
@@ -399,10 +412,6 @@
 
   <div id="toast" class="toast"></div>
 
-  <footer>
-    POWERED&nbsp;BY&nbsp;DEEPSEEK&nbsp;V4&nbsp;PRO &nbsp;·&nbsp; HOSTED&nbsp;ON&nbsp;EDGEONE&nbsp;PAGES
-  </footer>
-</main>
 
 </body>
 </html>
