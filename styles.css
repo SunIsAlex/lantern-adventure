@@ -222,3 +222,154 @@
   background: var(--rule);
   opacity: .6;
 }
+
+/* Debug panel: a tiny footer button opens a modal showing the most recent
+   request/response. Intentionally inconspicuous; useful for inspecting
+   DeepSeek's finish_reason and raw content when JSON parsing fails. */
+.debug-btn {
+  background: none;
+  border: 1px solid var(--rule);
+  color: var(--vellum-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .15em;
+  padding: 2px 8px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: color .15s, border-color .15s;
+}
+.debug-btn:hover {
+  color: var(--ember);
+  border-color: var(--ember);
+}
+.debug-panel {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+.debug-inner {
+  background: var(--ink-2);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  max-width: 900px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow);
+}
+.debug-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--vellum-dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.debug-close {
+  background: none;
+  border: none;
+  color: var(--vellum-muted);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.debug-close:hover { color: var(--ember); }
+.debug-body {
+  margin: 0;
+  padding: 16px 20px;
+  overflow: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--vellum);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Layered-mist placeholder shown inside the opening beat while /api/start
+   is in flight. Two radial-gradient layers drift in opposite directions
+   to feel like slow-moving fog, with a flickering italic line centered
+   above them. When dispersing, the whole thing fades and gently expands
+   outward like fog clearing. Falls back gracefully without filter: blur
+   support — the gradient cores are already soft. */
+/* Layered-mist placeholder shown inside the opening beat while /api/start
+   is in flight. Three radial-gradient blobs per layer drift in opposite
+   directions to feel like slow-moving fog, with a flickering italic line
+   centered above them. When dispersing, the whole thing fades and gently
+   expands outward like fog clearing. */
+.loading-mist {
+  position: relative;
+  height: 160px;
+  margin: 12px 0 0;
+  overflow: hidden;
+  border-radius: 6px;
+  transition: opacity .4s ease, transform .4s ease, filter .4s ease;
+}
+.loading-mist.dispersing {
+  opacity: 0;
+  transform: scale(1.08);
+  filter: blur(6px);
+}
+.loading-mist .mist-layer {
+  position: absolute;
+  inset: -25%;
+  pointer-events: none;
+  filter: blur(22px);
+}
+/* Three staggered radial blobs per layer create a denser cloud than two,
+   and stronger alphas make the fog actually read as fog rather than a
+   subtle wash. Layers drift in opposing directions for a churning feel. */
+.mist-a {
+  background:
+    radial-gradient(ellipse 65% 55% at 25% 50%, rgba(236,226,204,.42), transparent 70%),
+    radial-gradient(ellipse 55% 50% at 70% 35%, rgba(236,226,204,.34), transparent 70%),
+    radial-gradient(ellipse 50% 45% at 55% 75%, rgba(236,226,204,.30), transparent 70%);
+  animation: mist-drift-a 11s infinite ease-in-out;
+}
+.mist-b {
+  background:
+    radial-gradient(ellipse 60% 50% at 75% 60%, rgba(236,226,204,.38), transparent 70%),
+    radial-gradient(ellipse 50% 55% at 30% 35%, rgba(236,226,204,.32), transparent 70%),
+    radial-gradient(ellipse 45% 50% at 80% 25%, rgba(236,226,204,.28), transparent 70%);
+  animation: mist-drift-b 14s infinite ease-in-out;
+}
+@keyframes mist-drift-a {
+  0%   { transform: translate(0, 0); }
+  50%  { transform: translate(9%, -5%); }
+  100% { transform: translate(0, 0); }
+}
+@keyframes mist-drift-b {
+  0%   { transform: translate(0, 0); }
+  50%  { transform: translate(-7%, 6%); }
+  100% { transform: translate(0, 0); }
+}
+.mist-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 17px;
+  color: var(--vellum-dim);
+  letter-spacing: .04em;
+  animation: lantern-flicker 2.0s infinite ease-in-out;
+}
+.mist-text .dots span {
+  display: inline-block;
+  animation: blink 1.4s infinite both;
+}
+.mist-text .dots span:nth-child(2) { animation-delay: .2s; }
+.mist-text .dots span:nth-child(3) { animation-delay: .4s; }
