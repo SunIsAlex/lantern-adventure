@@ -22,14 +22,14 @@ const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 // tags only — the client parser ignores anything else and the safe DOM build
 // path never touches innerHTML, so this is a soft hint to the model rather
 // than a security boundary.
-export const INLINE_MARKUP_GUIDE = `叙述正文（opening / narrative 字段）可在必要处嵌入下列语义标记，做语义强调。**克制使用**，整段最多 5-8 处，普通文本无需任何标记：
+export const INLINE_MARKUP_GUIDE = `叙述正文（opening / narrative 字段）可在必要处嵌入下列语义标记，让前端做视觉强调。**克制使用**，整段最多 5-8 处，普通文本无需任何标记：
 - [[em]]…[[/em]]：强调关键词、转折、关键发现
-- [[dialog]]…[[/dialog]]：直接引语 / 对白 （[[dialog]]到此为止吧[[/dialog]]）
+- [[dialog]]…[[/dialog]]：直接引语 / 对白（不要再额外加引号）
 - [[name]]…[[/name]]：人名 / 地名 / 关键物品名首次出现
 - [[sense]]…[[/sense]]：突出的感官细节（声、光、气味、温度、触感）
 - [[whisper]]…[[/whisper]]：环境低语、远处声响、心声
 - [[break]]：段内停顿（无需关闭标签），段落间断点请仍用 \\n\\n
-标记必须正确闭合，只能用上面 6 种。其它字段（title / choices / summary 等）不要加任何标记。`;
+标记必须正确闭合且只能用上面 6 种。其它字段（title / choices / summary 等）不要加任何标记。`;
 
 export function corsHeaders() {
   return {

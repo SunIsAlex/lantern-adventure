@@ -25,10 +25,6 @@
   const resumeBtn   = $('resumeBtn');
   const discardBtn  = $('discardBtn');
   const toastEl     = $('toast');
-  const debugBtn    = $('debugBtn');
-  const debugPanel  = $('debugPanel');
-  const debugClose  = $('debugClose');
-  const debugBody   = $('debugBody');
 
   // ============================================================
   // Persistence layer — localStorage (private) + URL fragment (shareable)
@@ -396,14 +392,9 @@
     beat.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }
 
-  // The most recent request/response pair, exposed via the debug panel.
-  // Captures even on failure so we can inspect what DeepSeek actually sent.
-  let lastDebug = null;
-
   // Post JSON to an Edge Function and return the parsed response body.
   // Throws Error on non-OK responses or { ok:false } payloads.
   async function postJSON(url, payload) {
-    const startedAt = Date.now();
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -411,17 +402,10 @@
     });
     let data;
     try { data = await resp.json(); } catch (_) {}
-    lastDebug = {
-      timestamp: new Date().toISOString(),
-      durationMs: Date.now() - startedAt,
-      url,
-      payload,
-      status: resp.status,
-      response: data,
-    };
     if (!resp.ok || !data || data.ok === false) {
       throw new Error(data?.error || `请求失败，HTTP ${resp.status}`);
     }
+   
     return data;
   }
 
@@ -440,32 +424,13 @@
       scrollEl.innerHTML = '';
       storyEnded = false;
 
-      // Create a beat immediately and drop a layered "薄雾" placeholder
-      // inside it. Two radial-gradient layers drift in opposite directions
-      // (animated by CSS keyframes) and a centered italic line floats above
-      // them — pure CSS, no JS timer. When the response arrives we add
-      // .dispersing to fade and gently expand the mist, then setBeatText
-      // replaces the entire body with the real narrative.
+      // Create a beat immediately — text will stream into it.
       const streamCtx = createStreamingBeat(true);
-      const mist = document.createElement('div');
-      mist.className = 'loading-mist';
-      mist.innerHTML =
-        '<div class="mist-layer mist-a"></div>' +
-        '<div class="mist-layer mist-b"></div>' +
-        '<div class="mist-text">灯火正在燃起<span class="dots">' +
-        '<span>.</span><span>.</span><span>.</span></span></div>';
-      streamCtx.body.appendChild(mist);
       requestAnimationFrame(() =>
         streamCtx.beat.scrollIntoView({ behavior: 'smooth', block: 'start' })
       );
 
       const done = await postJSON('/api/start', { genre: selectedGenre, seed });
-
-      // Disperse the mist before swapping in the narrative. The 400ms
-      // matches the CSS transition; we wait it out so the swap reads as
-      // "fog clears → text revealed" rather than a hard cut.
-      mist.classList.add('dispersing');
-      await new Promise((r) => setTimeout(r, 400));
       setBeatText(streamCtx, done.narrative);
 
       storyState  = done.state;
@@ -669,39 +634,11 @@
   }
 
   // ============================================================
-  // Debug panel
-  // ============================================================
-  function openDebugPanel() {
-    let text;
-    if (!lastDebug) {
-      text = '尚未发起任何请求。';
-    } else {
-      // Pretty-print everything we captured. JSON.stringify with indent gives
-      // a readable view of payloads, DeepSeek's finish_reason / rawContent
-      // (via _debug), and any error message.
-      try {
-        text = JSON.stringify(lastDebug, null, 2);
-      } catch (e) {
-        text = '(无法序列化调试数据：' + e.message + ')';
-      }
-    }
-    debugBody.textContent = text;
-    debugPanel.classList.remove('hidden');
-  }
-  function closeDebugPanel() { debugPanel.classList.add('hidden'); }
-
-  // ============================================================
   // Wire up
   // ============================================================
   startBtn.addEventListener('click', startStory);
   restartBtn.addEventListener('click', restart);
   shareBtn.addEventListener('click', shareProgress);
-  debugBtn.addEventListener('click', openDebugPanel);
-  debugClose.addEventListener('click', closeDebugPanel);
-  debugPanel.addEventListener('click', (e) => {
-    // Click the dim backdrop to dismiss; clicks on the inner panel are ignored.
-    if (e.target === debugPanel) closeDebugPanel();
-  });
   freeBtn.addEventListener('click', () => {
     const v = freeInput.value.trim();
     if (v) submitAction(v);

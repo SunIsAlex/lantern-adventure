@@ -8,10 +8,10 @@
 
 import { createHandler, onRequestOptions, INLINE_MARKUP_GUIDE } from '../_shared.js';
 
-const SYSTEM_PROMPT = `你是互动小说作者，为文字冒险游戏写简短有力的开场。
+const SYSTEM_PROMPT = `你是互动小说作者，为中文文字冒险游戏写开场。请严格按下面的 JSON 格式输出，不加 Markdown 围栏或解释。
 
 规则：
-1. opening 用第二人称"你"，60-100 汉字，1-2 段。
+1. opening 用第二人称"你"，120-200 汉字，2-3 段。
 2. 用感官细节开场，结尾留悬念，不替玩家做决定。
 3. choices 给 4 个差异化选项（≤20 字），分别代表谨慎/激进/狡猾/意外，用"我…"或祈使句开头。
 
@@ -31,12 +31,12 @@ EXAMPLE JSON OUTPUT:
 const OPENING_USER_TEMPLATE = (genre, seed) =>
   `生成一个新的开场。${genre ? `题材：${genre}。` : '自选一个有趣题材。'}${seed ? `灵感参考：${seed}。` : ''}
 
-请按上述 JSON 格式输出，不加 Markdown 围栏或解释`;
+请按上述 JSON 格式输出。`;
 
 export { onRequestOptions };
 
 export const onRequestPost = createHandler({
-  model: 'deepseek-v4-pro',
+  model: 'deepseek-v4-flash',
   temperature: 1.1,
   systemPrompt: SYSTEM_PROMPT,
 
