@@ -379,18 +379,42 @@
   // Splits on double-newline into paragraphs, then parses each paragraph's
   // inline markup via appendInline. All DOM is built with createElement +
   // textContent — innerHTML is never assigned.
-  function setBeatText({ body, beat }, text) {
-    body._raw = String(text || '');
-    const paras = body._raw.split(/\n\n/);
-    body.replaceChildren();
-    paras.forEach((para, idx) => {
-      if (!para && idx < paras.length - 1) return;
-      const p = document.createElement('p');
-      appendInline(p, para);
-      body.appendChild(p);
-    });
+  // 在 setBeatText 上方添加辅助函数
+function renderToBody(body, text) {
+  const paras = String(text || '').split(/\n\n/);
+  body.replaceChildren();
+  paras.forEach((para, idx) => {
+    if (!para && idx < paras.length - 1) return;
+    const p = document.createElement('p');
+    appendInline(p, para);
+    body.appendChild(p);
+  });
+}
+
+
+
+function setBeatText({ body, beat }, text) {
+  const SPEED_MS = 100;
+  const fullText = String(text || '');
+  body._raw = fullText;
+  
+  if (body._typingInterval) clearInterval(body._typingInterval);
+  
+  let currentIndex = 0;
+  body._typingInterval = setInterval(() => {
+    if (currentIndex >= fullText.length) {
+      clearInterval(body._typingInterval);
+      body._typingInterval = null;
+      beat.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      return;
+    }
+    
+    const step = Math.min(2, fullText.length - currentIndex);
+    currentIndex += step;
+    renderToBody(body, fullText.slice(0, currentIndex));
     beat.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }
+  }, SPEED_MS);
+}
 
   // Post JSON to an Edge Function and return the parsed response body.
   // Throws Error on non-OK responses or { ok:false } payloads.
