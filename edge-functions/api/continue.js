@@ -6,14 +6,16 @@
 //              "ended": false, "state": {...} }
 //   error:   { "ok": false, "error": "..." }   (with HTTP 4xx/5xx)
 
-import { createHandler, onRequestOptions, jsonError } from '../_shared.js';
+import { createHandler, onRequestOptions, jsonError, INLINE_MARKUP_GUIDE } from '../_shared.js';
 
 const SYSTEM_PROMPT = `你是互动小说作者，续写文字冒险游戏。规则：
 1. 只返回合法 JSON，不加 Markdown 围栏或解释。
 2. 叙述用第二人称"你"，120-200 汉字，2-3 段，段间用 \\n\\n。
 3. 承接玩家动作给出具体后果，结尾留悬念，不替玩家做下一步决定。
 4. 约每 8 回合可触发自然结局，此时 ended:true，choices:[]。
-5. 若玩家动作超出世界观，让世界合理拒绝，不要训话。`;
+5. 若玩家动作超出世界观，让世界合理拒绝，不要训话。
+
+${INLINE_MARKUP_GUIDE}`;
 
 export { onRequestOptions };
 

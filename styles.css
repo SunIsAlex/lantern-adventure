@@ -190,3 +190,35 @@
   flex-wrap: wrap;
   margin-top: 40px;
 }
+/* Inline semantic tags emitted by the model.
+   Parsed in app.js from [[em]]…[[/em]] etc. (whitelist only). */
+.tag-em {
+  color: var(--ember-bright);
+  font-style: italic;
+}
+.tag-dialog {
+  font-style: italic;
+}
+.tag-dialog::before { content: '“'; }
+.tag-dialog::after  { content: '”'; }
+.tag-name {
+  color: var(--ember);
+  border-bottom: 1px dashed rgba(216, 146, 58, .35);
+}
+.tag-sense {
+  color: var(--vellum-dim);
+  font-style: italic;
+}
+.tag-whisper {
+  color: var(--vellum-muted);
+  font-style: italic;
+  opacity: .8;
+}
+.tag-break {
+  display: block;
+  width: 60px;
+  height: 1px;
+  margin: 14px auto;
+  background: var(--rule);
+  opacity: .6;
+}

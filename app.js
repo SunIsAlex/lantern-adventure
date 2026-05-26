@@ -253,7 +253,7 @@
       const paras = text.split(/\n{2,}/);
       paras.forEach((para) => {
         const p = document.createElement('p');
-        p.textContent = para.trim();
+        appendInline(p, para.trim());
         body.appendChild(p);
       });
       beat.appendChild(body);
@@ -310,17 +310,83 @@
     return { beat, body };
   }
 
+  // Whitelisted inline tags. The model is told it may use these in narrative
+  // text via `[[em]]…[[/em]]` syntax, plus a self-closing `[[break]]`.
+  // Anything else (including raw HTML) is treated as literal text.
+  const INLINE_TAGS = new Set(['em', 'dialog', 'name', 'sense', 'whisper']);
+  const SELF_CLOSING_TAGS = new Set(['break']);
+
+  // Parse a paragraph's text and append the resulting nodes (text + span) into
+  // `parent`. Safe by construction: we never touch innerHTML, and any token
+  // that doesn't match the strict `[[tag]]…[[/tag]]` whitelist is left as
+  // literal text via textContent.
+  function appendInline(parent, text) {
+    // Token regex captures: either a self-closing marker `[[break]]`, an
+    // opening `[[tag]]`, or a closing `[[/tag]]`. Tag names are limited to
+    // a-z. The split keeps the matches in the result array.
+    const re = /\[\[\/?[a-z]+\]\]/g;
+    let lastIndex = 0;
+    // Stack of currently-open span elements; when a closing tag matches the
+    // top of the stack we pop and resume appending into its parent.
+    const stack = [parent];
+    const top = () => stack[stack.length - 1];
+
+    const matches = [...text.matchAll(re)];
+    for (const m of matches) {
+      // Literal text between previous match and this one
+      const literal = text.slice(lastIndex, m.index);
+      if (literal) top().appendChild(document.createTextNode(literal));
+      lastIndex = m.index + m[0].length;
+
+      const tok = m[0];                // e.g. "[[em]]", "[[/em]]", "[[break]]"
+      const isClose = tok.startsWith('[[/');
+      const name = tok.slice(isClose ? 3 : 2, -2);
+
+      if (!isClose && SELF_CLOSING_TAGS.has(name)) {
+        const el = document.createElement('span');
+        el.className = 'tag-' + name;
+        top().appendChild(el);
+        continue;
+      }
+
+      if (!isClose && INLINE_TAGS.has(name)) {
+        const el = document.createElement('span');
+        el.className = 'tag-' + name;
+        top().appendChild(el);
+        stack.push(el);
+        continue;
+      }
+
+      if (isClose && INLINE_TAGS.has(name)) {
+        // Only pop if it matches the top of stack — otherwise treat as literal.
+        const topEl = top();
+        if (topEl !== parent && topEl.className === 'tag-' + name) {
+          stack.pop();
+          continue;
+        }
+      }
+
+      // Unrecognized tag, mismatched close, or close of a self-closing tag:
+      // render as literal text so the player at least sees something sane.
+      top().appendChild(document.createTextNode(tok));
+    }
+    // Trailing literal after the last token (or all of it if no tokens).
+    const tail = text.slice(lastIndex);
+    if (tail) top().appendChild(document.createTextNode(tail));
+  }
+
   // Render the full narrative text into a beat created by createStreamingBeat.
-  // Re-splits on double-newline into paragraphs, same as the old per-char
-  // renderer did, just done once instead of after every character.
+  // Splits on double-newline into paragraphs, then parses each paragraph's
+  // inline markup via appendInline. All DOM is built with createElement +
+  // textContent — innerHTML is never assigned.
   function setBeatText({ body, beat }, text) {
     body._raw = String(text || '');
     const paras = body._raw.split(/\n\n/);
-    body.innerHTML = '';
+    body.replaceChildren();
     paras.forEach((para, idx) => {
       if (!para && idx < paras.length - 1) return;
       const p = document.createElement('p');
-      p.textContent = para;
+      appendInline(p, para);
       body.appendChild(p);
     });
     beat.scrollIntoView({ behavior: 'smooth', block: 'end' });

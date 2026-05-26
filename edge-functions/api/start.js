@@ -6,12 +6,14 @@
 //              "choices": [...], "state": {...} }
 //   error:   { "ok": false, "error": "..." }   (with HTTP 4xx/5xx)
 
-import { createHandler, onRequestOptions } from '../_shared.js';
+import { createHandler, onRequestOptions, INLINE_MARKUP_GUIDE } from '../_shared.js';
 
 const SYSTEM_PROMPT = `你是互动小说作者，为文字冒险游戏写中文故事。规则：
 1. 只返回合法 JSON，不加 Markdown 围栏或解释。
 2. 叙述用第二人称"你"，120-200 汉字，2-3 段，段间用 \\n\\n。
-3. 用感官细节开场，结尾留悬念，不替玩家做决定。`;
+3. 用感官细节开场，结尾留悬念，不替玩家做决定。
+
+${INLINE_MARKUP_GUIDE}`;
 
 const OPENING_USER_TEMPLATE = (genre, seed) =>
   `生成文字冒险开场。${genre ? `题材：${genre}。` : '自选有趣题材。'}${seed ? `灵感：${seed}。` : ''}
@@ -24,8 +26,8 @@ const OPENING_USER_TEMPLATE = (genre, seed) =>
 export { onRequestOptions };
 
 export const onRequestPost = createHandler({
-  model: 'deepseek-v4-pro',
-  temperature: 1.0,
+  model: 'deepseek-v4-flash',
+  temperature: 1.1,
   systemPrompt: SYSTEM_PROMPT,
 
   buildRequest: async (context) => {
