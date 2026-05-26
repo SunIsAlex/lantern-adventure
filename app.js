@@ -434,6 +434,7 @@
       setBeatText(streamCtx, done.narrative);
 
       storyState  = done.state;
+      document.title = storyState.title;
       lastChoices = done.choices || [];
 
       renderChoices(lastChoices);
@@ -473,6 +474,7 @@
       setBeatText(streamCtx, done.narrative);
 
       storyState  = done.state;
+      document.title = storyState.title;
       lastChoices = done.choices || [];
 
       if (done.ended) {
