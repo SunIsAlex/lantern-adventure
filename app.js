@@ -280,6 +280,7 @@
     });
     freeInput.value = '';
     choicesWrap.classList.remove('hidden');
+    
   }
 
   function showEnding() {
@@ -324,7 +325,7 @@
     // Token regex captures: either a self-closing marker `[[break]]`, an
     // opening `[[tag]]`, or a closing `[[/tag]]`. Tag names are limited to
     // a-z. The split keeps the matches in the result array.
-    const re = /\[\[\/?[a-z]+\]\]/g;
+    const re = /\[\[\/?[a-z]+\]\]|<<\/?[a-z]+>>/g;
     let lastIndex = 0;
     // Stack of currently-open span elements; when a closing tag matches the
     // top of the stack we pop and resume appending into its parent.
@@ -405,7 +406,7 @@ function setBeatText({ body, beat }, text) {
     if (currentIndex >= fullText.length) {
       clearInterval(body._typingInterval);
       body._typingInterval = null;
-      beat.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      choicesEl.scrollIntoView({block:"end"});
       return;
     }
     

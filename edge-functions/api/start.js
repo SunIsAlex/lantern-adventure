@@ -11,7 +11,7 @@ import { createHandler, onRequestOptions, INLINE_MARKUP_GUIDE } from '../_shared
 const SYSTEM_PROMPT = `你是互动小说作者，为中文文字冒险游戏写开场。严格按下方 JSON 输出，不加 Markdown 围栏或解释。
 
 规则：
-1. opening：第二人称"你"，120-200 汉字，2-3 段，段间 \\n\\n。感官细节开场，结尾留悬念，不替玩家决定。
+1. opening：第二人称"你"，60-100 汉字，2-3 段，段间 \\n\\n。感官细节开场，结尾留悬念，不替玩家决定。
 2. choices：4 个差异化选项（≤20 字），分别代表谨慎/激进/狡猾/意外，用"我…"或祈使句开头，纯文本。
 3. 语义标记必须正确闭合，详见下方规则。
 
@@ -36,7 +36,7 @@ const OPENING_USER_TEMPLATE = (genre, seed) =>
 export { onRequestOptions };
 
 export const onRequestPost = createHandler({
-  model: 'deepseek-v4-flash',
+  model: 'deepseek-v4-pro',
   temperature: 1.1,
   systemPrompt: SYSTEM_PROMPT,
 

@@ -185,7 +185,7 @@ edgeone pages deploy . -n lantern-adventure
 - **隐藏纲要**：`state.summary` 是一句对玩家不可见的剧情纲要，模型在每次推进时可以更新它（通过 `summary_update` 字段），用来保持长程一致性。
 - **历史里的 assistant 输出包成 JSON**：传给 DeepSeek 时，历史回合里的 narrative 会被包成 `{"narrative": "..."}` 这样的最小 JSON 字符串。否则模型看到自己以前是"散文"输出，多轮之后会忘记 schema、直接返回散文 —— state.history 在前端 / 本地存档里仍然是裸 narrative，前后端契约不变。
 - **选项之外的动作**：自由输入被当成 `玩家行动：xxx` 喂给模型，prompt 明确允许 AI 让不合常理的动作以合乎物理 / 世界观的方式失败，避免破坏沉浸感。
-- **温度与模型**：开场用 `deepseek-v4-pro` + `temperature=1.0`（鼓励多样开局），后续用 `deepseek-v4-flash` + `temperature=0.9`（更快、更便宜，鼓励连贯性）。想要更稳定的故事可以调低温度；想更狂野调到 `1.1+`。模型替换只需改 `start.js` / `continue.js` 顶部 `createHandler({ model, temperature, ... })` 的两个字段。`max_tokens` 设在 `_shared.js` 里，目前是 1500（DeepSeek JSON 模式有时会因为撞顶截断，留余量）。
+- **温度与模型**：开场用 `deepseek-v4-pro` + `temperature=1.1`（鼓励多样开局），后续用 `deepseek-v4-pro` + `temperature=0.9`（鼓励连贯性）。想要更稳定的故事可以调低温度；想更狂野调到 `1.1+`。模型替换只需改 `start.js` / `continue.js` 顶部 `createHandler({ model, temperature, ... })` 的两个字段。`max_tokens` 设在 `_shared.js` 里，目前是 1500（DeepSeek JSON 模式有时会因为撞顶截断，留余量）。
 - **JSON 模式**：调用 DeepSeek 时使用 `response_format: { type: 'json_object' }`，且 system prompt 包含字面 `JSON` 字样 + `EXAMPLE JSON OUTPUT` 多行样例 —— 这是 [DeepSeek 官方文档](https://api-docs.deepseek.com/zh-cn/guides/json_mode) 推荐的用法。
 
 ---

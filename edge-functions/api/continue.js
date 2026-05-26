@@ -11,7 +11,7 @@ import { createHandler, onRequestOptions, jsonError, INLINE_MARKUP_GUIDE } from 
 const SYSTEM_PROMPT = `你是互动小说作者，为中文文字冒险游戏续写。严格按下方 JSON 输出，不加 Markdown 围栏或解释。
 
 规则：
-1. narrative：承接玩家动作，第二人称"你"，120-200 汉字，2-3 段，段间 \\n\\n。结尾留悬念，不替玩家决定。
+1. narrative：承接玩家动作，第二人称"你"，60-100 汉字，2-3 段，段间 \\n\\n。结尾留悬念，不替玩家决定。
 2. choices：4 个差异化选项（≤20 字），纯文本。
 3. 约每 8 回合可触发自然结局，ended=true 且 choices=[]。
 4. 玩家动作超出世界观时，让世界合理拒绝，不训话。
@@ -38,7 +38,7 @@ EXAMPLE JSON OUTPUT:
 export { onRequestOptions };
 
 export const onRequestPost = createHandler({
-  model: 'deepseek-v4-flash',
+  model: 'deepseek-v4-pro',
   temperature: 0.9,
   systemPrompt: SYSTEM_PROMPT,
 
