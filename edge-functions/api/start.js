@@ -8,12 +8,12 @@
 
 import { createHandler, onRequestOptions, INLINE_MARKUP_GUIDE } from '../_shared.js';
 
-const SYSTEM_PROMPT = `你是互动小说作者，为中文文字冒险游戏写开场。请严格按下面的 JSON 格式输出，不加 Markdown 围栏或解释。
+const SYSTEM_PROMPT = `你是互动小说作者，为中文文字冒险游戏写开场。严格按下方 JSON 输出，不加 Markdown 围栏或解释。
 
 规则：
-1. opening 用第二人称"你"，120-200 汉字，2-3 段。
-2. 用感官细节开场，结尾留悬念，不替玩家做决定。
-3. choices 给 4 个差异化选项（≤20 字），分别代表谨慎/激进/狡猾/意外，用"我…"或祈使句开头。
+1. opening：第二人称"你"，120-200 汉字，2-3 段，段间 \\n\\n。感官细节开场，结尾留悬念，不替玩家决定。
+2. choices：4 个差异化选项（≤20 字），分别代表谨慎/激进/狡猾/意外，用"我…"或祈使句开头，纯文本。
+3. 语义标记必须正确闭合，详见下方规则。
 
 ${INLINE_MARKUP_GUIDE}
 
@@ -24,7 +24,7 @@ EXAMPLE JSON OUTPUT:
   "protagonist": "阿野，年轻夜行人",
   "setting": "雾锁山港，提灯不可灭",
   "summary": "寻人，遇山鬼",
-  "opening": "夜半。你提着[[name]]鲸油灯[[/name]]走入山道，雾从脚边漫起，浸湿了裤脚。\\n\\n远处传来一声[[whisper]]极轻的叹息[[/whisper]]，像有人在你耳边吹气。",
+  "opening": "夜半。你提着[[name]]鲸油灯[[/name]]走入山道，雾从脚边漫起，浸湿裤脚。\\n\\n远处传来一声[[whisper]]极轻的叹息[[/whisper]]，像有人在你耳边吹气。",
   "choices": ["举灯照向声音来处", "我吹熄灯，静立不动", "我低声答话试探", "退回港口"]
 }`;
 
