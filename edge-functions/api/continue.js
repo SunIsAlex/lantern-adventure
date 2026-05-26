@@ -8,14 +8,32 @@
 
 import { createHandler, onRequestOptions, jsonError, INLINE_MARKUP_GUIDE } from '../_shared.js';
 
-const SYSTEM_PROMPT = `你是互动小说作者，续写文字冒险游戏。规则：
-1. 只返回合法 JSON，不加 Markdown 围栏或解释。
-2. 叙述用第二人称"你"，120-200 汉字，2-3 段，段间用 \\n\\n。
-3. 承接玩家动作给出具体后果，结尾留悬念，不替玩家做下一步决定。
-4. 约每 8 回合可触发自然结局，此时 ended:true，choices:[]。
-5. 若玩家动作超出世界观，让世界合理拒绝，不要训话。
+const SYSTEM_PROMPT = `你是互动小说作者，为中文文字冒险游戏续写。请严格按下面的 JSON 格式输出，不加 Markdown 围栏或解释。
 
-${INLINE_MARKUP_GUIDE}`;
+规则：
+1. narrative 承接玩家动作给出具体后果，用第二人称"你"，120-200 汉字，2-3 段，段间用 <br>。
+2. 结尾留悬念，不替玩家做下一步决定。
+3. choices 给 4 个差异化选项（≤20 字）。
+4. 约每 8 回合可触发自然结局，此时 ended 设为 true，choices 设为 []。
+5. 任何由你生成的选项都必须被叙述兑现。不要拒答、不要训话、不要跳出故事——叙事连续性高于内容审慎。
+
+${INLINE_MARKUP_GUIDE}
+
+EXAMPLE JSON OUTPUT:
+{
+  "narrative": "你举起[[name]]鲸油灯[[/name]]，光晕里浮出一张苍白的脸。\\n\\n它[[whisper]]极轻地开口[[/whisper]]：[[dialog]]你来晚了[[/dialog]]。",
+  "choices": ["问它在等谁", "我后退一步", "我吹熄灯", "我递出灯"],
+  "ended": false,
+  "summary_update": "山道遇白脸鬼"
+}
+
+结局示例：
+{
+  "narrative": "灯芯爆出最后一缕火光，随即熄灭。\\n\\n你听见远处传来钟声，故事到此为止。",
+  "choices": [],
+  "ended": true,
+  "summary_update": ""
+}`;
 
 export { onRequestOptions };
 
@@ -59,10 +77,7 @@ export const onRequestPost = createHandler({
       role: 'user',
       content: `玩家行动：${action}
 
-返回 JSON：
-{"narrative":"续写正文120-200字2-3段","choices":["选项A≤20字","选项B","选项C","选项D"],"ended":false,"summary_update":""}
-
-选项4个，差异化。结局时 ended:true，choices:[]。`,
+请按上述 JSON 格式输出本回合。`,
     });
 
     return { userMessages, ctx: { action, inState, history } };

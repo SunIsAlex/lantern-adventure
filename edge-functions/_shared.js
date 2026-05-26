@@ -63,7 +63,7 @@ async function callDeepSeek({ apiKey, model, messages, temperature }) {
       model,
       messages,
       temperature,
-      max_tokens: 900,
+      max_tokens: 1500,
       response_format: { type: 'json_object' },
       stream: false,
       thinking: { type: 'disabled' },
