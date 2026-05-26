@@ -11,7 +11,7 @@ import { createHandler, onRequestOptions, INLINE_MARKUP_GUIDE } from '../_shared
 const SYSTEM_PROMPT = `你是互动小说作者，为中文文字冒险游戏写开场。请严格按下面的 JSON 格式输出，不加 Markdown 围栏或解释。
 
 规则：
-1. opening 用第二人称"你"，120-200 汉字，2-3 段，段间用 <br>。
+1. opening 用第二人称"你"，120-200 汉字，2-3 段。
 2. 用感官细节开场，结尾留悬念，不替玩家做决定。
 3. choices 给 4 个差异化选项（≤20 字），分别代表谨慎/激进/狡猾/意外，用"我…"或祈使句开头。
 

@@ -8,14 +8,14 @@
 
 import { createHandler, onRequestOptions, jsonError, INLINE_MARKUP_GUIDE } from '../_shared.js';
 
-const SYSTEM_PROMPT = `你是互动小说作者，为中文文字冒险游戏续写。请严格按下面的 JSON 格式输出，不加 Markdown 围栏或解释。
+const SYSTEM_PROMPT = `你是互动小说作者，为中文文字冒险游戏续写。请严格按下面的 JSON 格式输出，不要加 Markdown 围栏或解释。
 
 规则：
-1. narrative 承接玩家动作给出具体后果，用第二人称"你"，120-200 汉字，2-3 段，段间用 <br>。
+1. narrative 承接玩家动作给出具体后果，用第二人称"你"，120-200 汉字，2-3 段。
 2. 结尾留悬念，不替玩家做下一步决定。
 3. choices 给 4 个差异化选项（≤20 字）。
 4. 约每 8 回合可触发自然结局，此时 ended 设为 true，choices 设为 []。
-5. 任何由你生成的选项都必须被叙述兑现。不要拒答、不要训话、不要跳出故事——叙事连续性高于内容审慎。
+5. 若玩家动作超出世界观，让世界合理拒绝，不要训话。
 
 ${INLINE_MARKUP_GUIDE}
 
@@ -68,9 +68,20 @@ export const onRequestPost = createHandler({
     if (bible) userMessages.push({ role: 'system', content: bible });
 
     for (const beat of trimmed) {
-      if      (beat.role === 'assistant') userMessages.push({ role: 'assistant', content: beat.text });
-      else if (beat.role === 'user')      userMessages.push({ role: 'user',      content: `玩家行动：${beat.text}` });
-      else                                userMessages.push({ role: 'system',    content: beat.text });
+      if (beat.role === 'assistant') {
+        // Wrap as a minimal JSON object so the model sees its own prior
+        // outputs as schema-shaped — otherwise after a few turns it tends to
+        // drift back to plain prose, since the bare narrative strings in
+        // history look nothing like the JSON object we keep asking for.
+        userMessages.push({
+          role: 'assistant',
+          content: JSON.stringify({ narrative: beat.text }),
+        });
+      } else if (beat.role === 'user') {
+        userMessages.push({ role: 'user', content: `玩家行动：${beat.text}` });
+      } else {
+        userMessages.push({ role: 'system', content: beat.text });
+      }
     }
 
     userMessages.push({

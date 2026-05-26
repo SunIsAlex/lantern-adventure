@@ -81,7 +81,7 @@ function parseAssistantJSON(raw) {
   } catch (_) {
     const m = cleaned.match(/\{[\s\S]*\}/);
     if (m) return JSON.parse(m[0]);
-    throw new Error('DeepSeek 返回的不是合法 JSON。');
+    throw new Error(`DeepSeek 返回的不是合法 JSON:${raw}`);
   }
 }
 
