@@ -173,11 +173,11 @@
   // and "collapses" into <span class="tag-em"> once `]]` arrives and the
   // matching `[[/em]]` is later seen.
   // ============================================================
-  const INLINE_TAGS = new Set(['em', 'dialog', 'name', 'sense', 'whisper']);
-  const SELF_CLOSING_TAGS = new Set(['break']);
+  const INLINE_TAGS = new Set(['EM', 'DIALOG', 'NAME', 'SENSE', 'WHISPER']);
+  const SELF_CLOSING_TAGS = new Set(['BREAK']);
 
   function appendInline(parent, text) {
-    const re = /\[\[\/?[a-z]+\]\]|<<\/?[a-z]+>>/g;
+    const re = /\[\[\/?[A-Za-z]+\]\]|<<\/?[A-Za-z]+>>|\{\{\/?[A-Za-z]+\}\}/g;
     let lastIndex = 0;
     const stack = [parent];
     const top = () => stack[stack.length - 1];
@@ -189,8 +189,8 @@
       lastIndex = m.index + m[0].length;
 
       const tok = m[0];
-      const isClose = tok.startsWith('[[/') || tok.startsWith('<</');
-      const name = tok.replace(/[\[\]<>\/]/g, '');
+      const isClose = tok.startsWith('[[/') || tok.startsWith('<</') || tok.startsWith('{{/');
+      const name = tok.replace(/[\[\]<>\/\{\}]/g, '').toUpperCase();
 
       if (!isClose && SELF_CLOSING_TAGS.has(name)) {
         const el = document.createElement('span');
@@ -219,15 +219,20 @@
   }
 
   // ============================================================
-  // Incremental & full renderers
+  // Append a chunk of text to the live narrative body.
   //
-  // appendChunkToBody(): for the typewriter animation. Appends incoming
-  //   text by extending the trailing text node (a single fast DOM op).
-  //   When a complete markup token like `[[em]]` arrives, we re-parse
-  //   only the *current* paragraph — other paragraphs stay untouched.
+  // Re-renders the current paragraph from its raw slice on every chunk.
   //
-  // renderToBody(): full rebuild from a finished string. Used when
-  //   restoring from save/share where the entire text is already in hand.
+  // Markup-aware pacing: if the raw text currently ends *inside* a markup
+  // token (e.g. "...村口[[", or "...[[em]]心跳[[/e"), we skip the DOM update
+  // for this tick. The characters are kept in _raw and will be rendered when
+  // the next tick(s) bring the closing brackets. Visual effect: the player
+  // never sees a half-typed "[[em]]"; instead the styled phrase appears in
+  // one flash the moment the token closes.
+  //
+  // body._raw            : entire raw text seen so far
+  // body._paraRawStarts  : index in _raw where each paragraph begins
+  // body._liveP          : the currently-growing <p> element
   // ============================================================
   function appendChunkToBody(body, chunk) {
     if (!body._raw) {
@@ -239,47 +244,49 @@
     const prevLen = body._raw.length;
     body._raw += chunk;
 
+    // Track paragraph breaks. We do this even when we're inside a token —
+    // the model never writes "\n\n" inside a markup tag in practice, but if
+    // it ever did, we still want correct paragraph indexing.
     for (let i = prevLen; i < body._raw.length; i++) {
-      const ch = body._raw[i];
-
-      // Paragraph break — only fires on the second '\n' of "\n\n".
-      if (ch === '\n' && i > 0 && body._raw[i - 1] === '\n') {
-        if (body._liveP && body._liveP.lastChild &&
-            body._liveP.lastChild.nodeType === 3 &&
-            body._liveP.lastChild.textContent.endsWith('\n')) {
-          body._liveP.lastChild.textContent =
-            body._liveP.lastChild.textContent.replace(/\n+$/, '');
-        }
+      if (body._raw[i] === '\n' && i > 0 && body._raw[i - 1] === '\n') {
         body._paraRawStarts.push(i + 1);
         body._liveP = null;
-        continue;
-      }
-
-      if (!body._liveP) {
-        body._liveP = document.createElement('p');
-        body.appendChild(body._liveP);
-      }
-
-      const last = body._liveP.lastChild;
-      if (last && last.nodeType === 3) {
-        last.appendData(ch);
-      } else {
-        body._liveP.appendChild(document.createTextNode(ch));
-      }
-
-      if (ch === ']' || ch === '>') {
-        const need = ch === ']' ? ']]' : '>>';
-        if (body._raw.slice(i - 1, i + 1) === need) {
-          const paraStart = body._paraRawStarts[body._paraRawStarts.length - 1];
-          const paraText = body._raw.slice(paraStart);
-          if (/\[\[\/?[a-z]+\]\]|<<\/?[a-z]+>>/.test(paraText)) {
-            body._liveP.replaceChildren();
-            appendInline(body._liveP, paraText);
-          }
-        }
       }
     }
+
+    // If raw ends inside an unclosed markup token, defer the render until
+    // the closing bracket arrives. Detecting "inside a token" is cheap:
+    // look at the tail since the last `[[` or `<<` — if it doesn't contain
+    // the matching `]]` or `>>`, we're still inside.
+    if (endsInsideMarkup(body._raw)) return;
+
+    const lastParaStart = body._paraRawStarts[body._paraRawStarts.length - 1];
+    const lastParaText = body._raw.slice(lastParaStart).replace(/\n+$/, '');
+    if (!lastParaText) return;
+
+    if (!body._liveP) {
+      body._liveP = document.createElement('p');
+      body.appendChild(body._liveP);
+    }
+    body._liveP.replaceChildren();
+    appendInline(body._liveP, lastParaText);
   }
+
+  // Returns true if `text` ends in the middle of an unclosed [[...]] or
+  // <<...>> token. Used by appendChunkToBody to pause rendering until the
+  // token completes.
+  function endsInsideMarkup(text) {
+  const tail = text.slice(-30);
+
+  const lastSqOpen = tail.lastIndexOf('[[');
+  const lastAgOpen = tail.lastIndexOf('<<');
+  const lastCuOpen = tail.lastIndexOf('{{');
+
+  if (lastSqOpen !== -1 && tail.indexOf(']]', lastSqOpen + 2) === -1) return true;
+  if (lastAgOpen !== -1 && tail.indexOf('>>', lastAgOpen + 2) === -1) return true;
+  if (lastCuOpen !== -1 && tail.indexOf('}}', lastCuOpen + 2) === -1) return true;
+  return false;
+}
 
   function renderToBody(body, text) {
     const paras = String(text || '').split(/\n\n/);
@@ -424,7 +431,7 @@
   // Title sanitizer — strip inline markup before using as document.title.
   // ============================================================
   function cleanTitle(t) {
-    return String(t || '').replace(/\[\[\/?[a-z]+\]\]|<<\/?[a-z]+>>/g, '').trim() || '提灯人';
+    return String(t || '').replace(/\[\[\/?[A-Za-z]+\]\]|<<\/?[A-Za-z]+>>|\{\{\/?[A-Za-z]+\}\}/g, '').trim() || '提灯人';
   }
 
   // ============================================================
@@ -593,7 +600,7 @@
     const genre = save.state?.genre || '';
     const lastAssistant = [...history].reverse().find(b => b.role === 'assistant');
     const excerpt = lastAssistant
-      ? lastAssistant.text.replace(/\[\[\/?[a-z]+\]\]|<<\/?[a-z]+>>/g, '').replace(/\n+/g, ' ')
+      ? lastAssistant.text.replace(/\[\[\/?[A-Za-z]+\]\]|<<\/?[A-Za-z]+>>|\{\{\/?[A-Za-z]+\}\}/g, '').replace(/\n+/g, ' ')
       : '';
 
     const when = new Date(save.savedAt || Date.now());

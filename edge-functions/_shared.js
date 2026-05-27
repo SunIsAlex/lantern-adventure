@@ -9,12 +9,12 @@
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 
 export const INLINE_MARKUP_GUIDE = `语义标记（用于叙事正文）：
-- [[em]]…[[/em]]：强调
-- [[dialog]]…[[/dialog]]：对白（标签自带引号，内部勿加 "" 「」）
-- [[name]]…[[/name]]：人名 / 地名 / 关键物品首次出现
-- [[sense]]…[[/sense]]：突出的感官细节
-- [[whisper]]…[[/whisper]]：低语、远响、心声
-- <<break>>：段内停顿，单标签无需闭合；段落换行用 \\n\\n
+- [[EM]]…[[/EM]]：强调
+- [[DIALOG]]…[[/DIALOG]]：对白（标签自带引号，内部勿加 "" 「」）
+- [[NAME]]…[[/NAME]]：人名 / 地名 / 关键物品首次出现
+- [[SENSE]]…[[/SENSE]]：突出的感官细节
+- [[WHISPER]]…[[/WHISPER]]：低语、远响、心声
+- <<BREAK>>：段内停顿，单标签无需闭合；段落换行用 \\n\\n
 
 铁律：每个开标签必须有对应闭标签，标签名小写，只能用上述 6 种。漏闭合或拼错 = 整段作废。
 用量：整段最多 4 处，不确定能否正确闭合就用纯文本。
