@@ -3,5 +3,8 @@
     "nodejs": {
       "maxDuration": 120
     }
-  }
+  },
+  "installCommand": "npm install --save-dev html-minifier-terser terser",
+  "buildCommand": "node build.js",
+  "outputDirectory": "./dist"
 }

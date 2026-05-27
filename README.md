@@ -16,18 +16,18 @@
 ├─ app.js                      # 前端逻辑（IIFE，不依赖任何框架）
 ├─ edgeone.json                # EdgeOne Pages 构建配置（maxDuration 等）
 ├─ edge-functions/
-│  ├─ _shared.js               # CORS、DeepSeek 调用、JSON 解析等公共逻辑
+│  ├─ _shared.js               # CORS、DeepSeek 调用、JSON 解析、handler 工厂
 │  └─ api/
-│     ├─ start.js              # POST /api/start    —— 生成开场
-│     └─ continue.js           # POST /api/continue —— 推进故事
+│     ├─ narrate.js            # POST /api/narrate  —— 由 Pro 写一段叙事
+│     └─ choices.js            # POST /api/choices  —— 由 Flash 生成 4 个选项
 └─ README.md
 ```
 
 - **静态资源**（`index.html` / `styles.css` / `app.js`）由 EdgeOne 全球节点托管。`app.js` 在 `<head>` 里以 `defer` 加载，能与 HTML 并行下载；首屏关键 CSS 内联在 `<head>` 避免 FOUC，游戏中才出现的样式放外部 `styles.css`。
 - **后端逻辑**完全跑在 EdgeOne Pages 的 **Edge Functions** 上，文件结构即路由：
-  - `/edge-functions/api/start.js` → `https://你的域名/api/start`
-  - `/edge-functions/api/continue.js` → `https://你的域名/api/continue`
-  - 两个 route 通过 `import { createHandler } from '../_shared.js'` 复用大部分骨架（DeepSeek 调用、JSON 解析、CORS、错误处理），各自只声明模型、温度、system prompt、请求解析和 finalize 校验。
+  - `/edge-functions/api/narrate.js` → `https://你的域名/api/narrate`
+  - `/edge-functions/api/choices.js` → `https://你的域名/api/choices`
+- **每个回合都是两段式调用**：先调 `/api/narrate` 拿叙事正文（由 DeepSeek V4 Pro 直接吐纯文本），再调 `/api/choices` 拿 4 个选项 + 故事元数据（由 DeepSeek V4 Flash 输出 JSON）。两段分开的好处：叙事不必塞进 JSON schema，模型不会因为转义引号、混排 Markdown 等小毛病整段作废；选项用更便宜的 Flash 模型生成，整体成本下降。
 - DeepSeek 的 API Key 通过 **环境变量** `DEEPSEEK_API_KEY` 注入，**不会出现在前端代码里**。
 
 ---
@@ -89,54 +89,88 @@ edgeone pages deploy . -n lantern-adventure
 
 ## 五、API 说明
 
-两个 route 都是普通的 JSON 请求-响应，没有流式/SSE。
+两段式调用，都是普通的 JSON 请求-响应（详见"七、关于流式输出"）。
 
-### `POST /api/start`
+### `POST /api/narrate`
 
-请求体（字段都可选）：
+由 DeepSeek V4 Pro 写一段叙事正文。
+
+**请求体**——无 state 视为开场回合：
 
 ```json
 { "genre": "蒸汽朋克悬疑", "seed": "一只会说话的乌鸦" }
 ```
 
-成功响应：
+带 state 视为续写回合：
 
 ```json
 {
-  "ok": true,
-  "narrative": "故事开场正文（带 \n\n 分段，可能含内联标记）",
-  "title": "故事标题",
-  "choices": ["选项 A", "选项 B", "选项 C", "选项 D"],
-  "state": { "history": [...], "summary": "...", "..." }
-}
-```
-
-### `POST /api/continue`
-
-请求体：
-
-```json
-{
-  "state":  { "...": "上一次响应里的 state 原样回传" },
+  "state":  { "title": "...", "history": [...], "summary": "..." },
   "action": "我悄悄绕到柱子后面"
 }
 ```
 
-`action` 可以是 `choices` 里的某一项，**也可以是任何自由文本**。
+`action` 可以是上一轮 `choices` 里的某一项，**也可以是任何自由文本**。
 
-成功响应：
+**成功响应**：
+
+```json
+{ "ok": true, "narrative": "故事正文（带 \\n\\n 分段，可能含内联标记）" }
+```
+
+### `POST /api/choices`
+
+由 DeepSeek V4 Flash 在叙事文本基础上生成 4 个差异化选项，并判断本回合是否到达自然结局。
+
+**请求体**——开场回合（无 state 传入）：
+
+```json
+{
+  "narration": "刚由 /api/narrate 拿到的叙事原文",
+  "genre":     "蒸汽朋克悬疑",
+  "seed":      "一只会说话的乌鸦"
+}
+```
+
+**响应**会同时返回从叙事里抽取的故事元数据：
 
 ```json
 {
   "ok": true,
-  "narrative": "下一段故事",
-  "choices":   ["...", "..."],
-  "ended":     false,
-  "state":     { "...": "更新后的 state" }
+  "choices": ["选项 A", "选项 B", "选项 C", "选项 D"],
+  "ended":   false,
+  "meta": {
+    "title":       "故事标题",
+    "genre":       "题材标签",
+    "protagonist": "主角一句话",
+    "setting":     "背景一句话",
+    "summary":     "对玩家不可见的剧情纲要"
+  }
 }
 ```
 
-当 `ended` 为 `true` 时 `choices` 为空数组，前端会显示 "F I N" 收尾。
+续写回合（带 state）：
+
+```json
+{
+  "narration": "本回合刚拿到的叙事原文",
+  "action":    "玩家本回合的行动",
+  "state":     { "...": "整段 state 原样传入" }
+}
+```
+
+**响应**：
+
+```json
+{
+  "ok": true,
+  "choices":        ["...", "..."],
+  "ended":          false,
+  "summary_update": "一句更新后的剧情纲要"
+}
+```
+
+当 `ended` 为 `true` 时 `choices` 为空数组，前端会显示 "F I N" 收尾印。
 
 ### 错误响应（两个 route 通用）
 
@@ -144,7 +178,7 @@ edgeone pages deploy . -n lantern-adventure
 { "ok": false, "error": "可读的中文错误描述" }
 ```
 
-附带相应的 HTTP 4xx / 5xx 状态码。常见错误：未配置 `DEEPSEEK_API_KEY`（500）、请求体缺 `action`（400）、DeepSeek 返回非合法 JSON（502）。
+附带相应的 HTTP 4xx / 5xx 状态码。常见错误：未配置 `DEEPSEEK_API_KEY`（500）、请求体缺 `action` 或 `narration`（400）、DeepSeek 返回非合法 JSON（502，仅 `/api/choices`）。
 
 ---
 
@@ -160,18 +194,26 @@ edgeone pages deploy . -n lantern-adventure
 
 ### 语义内联标记
 
-模型可以在 `narrative` 字段中嵌入以下白名单标记，前端会渲染成带样式的 `<span>`：
+模型可以在叙事正文中嵌入以下白名单标记，前端会渲染成带样式的 `<span>`：
 
 | 标记 | 含义 |
 | --- | --- |
-| `[[em]]…[[/em]]` | 强调关键词 / 转折 |
-| `[[dialog]]…[[/dialog]]` | 直接引语 / 对白 |
-| `[[name]]…[[/name]]` | 人名 / 地名 / 关键物品 |
-| `[[sense]]…[[/sense]]` | 突出感官细节 |
-| `[[whisper]]…[[/whisper]]` | 环境低语 / 心声 |
-| `<<break>>` | 段内停顿（自闭合） |
+| `[[EM]]…[[/EM]]` | 强调关键词 / 转折 |
+| `[[DIALOG]]…[[/DIALOG]]` | 直接引语 / 对白（标签自带引号） |
+| `[[NAME]]…[[/NAME]]` | 人名 / 地名 / 关键物品 |
+| `[[SENSE]]…[[/SENSE]]` | 突出感官细节 |
+| `[[WHISPER]]…[[/WHISPER]]` | 环境低语 / 心声 |
+| `<<BREAK>>` | 段内停顿（自闭合） |
 
-解析路径**零 `innerHTML`**：用正则 `/\[\[\/?[a-z]+\]\]/g` 切 token，命中白名单的开标签压栈生成 `<span class="tag-X">`，其它任何 token（包括 HTML、含属性的伪标签、未闭合）一律降级为 `textContent`。新生成的回合和从分享链接 / 本地存档恢复出来的历史都走同一条解析路径。
+为什么大写：在中文叙事里大写字母几乎不会出现，作为"控制标签"语义最清晰，模型也最不容易把它和正文里的修饰性强调搞混。
+
+**前端容错**：解析正则同时接受 `[[XX]]`、`<<XX>>`、`{{XX}}` 三种括号形式（模型偶尔会输错括号），也同时接受大小写——CSS 类名一律转成小写，所以 `[[em]]` / `[[Em]]` / `[[EM]]` 都会渲染出 `<span class="tag-em">`。
+
+**安全模型**：解析路径**零 `innerHTML`**，全部用 `createElement` + `textContent`。命中白名单的开标签压栈生成 `<span class="tag-X">`，其它任何 token（含属性的伪标签、未闭合的、非白名单的标签名、HTML 注入尝试）一律降级为字面字符。新生成的回合和从分享链接 / 本地存档恢复出来的历史都走同一条解析路径。
+
+### 客户端打字机
+
+叙事拿到后用客户端打字机把字符一段段渲染（默认 35ms / 2 字符）。**遇到未闭合的标记 token 会暂停**，等闭合括号到达再一次性把整段带格式的内容"啪"地闪现——视觉上的写作感不亚于真流式。
 
 ### 灯笼摇曳的等待状态
 
@@ -179,18 +221,33 @@ edgeone pages deploy . -n lantern-adventure
 
 ---
 
-## 七、设计要点 / 可以怎么改
+## 七、关于流式输出
 
-- **故事连贯性**：`/api/continue` 收到回合后，会把 state.history 按"开场 + 中段省略 + 最近 10 回合"做一次压缩（阈值 12 回合），既保连贯又防爆上下文。
-- **隐藏纲要**：`state.summary` 是一句对玩家不可见的剧情纲要，模型在每次推进时可以更新它（通过 `summary_update` 字段），用来保持长程一致性。
-- **历史里的 assistant 输出包成 JSON**：传给 DeepSeek 时，历史回合里的 narrative 会被包成 `{"narrative": "..."}` 这样的最小 JSON 字符串。否则模型看到自己以前是"散文"输出，多轮之后会忘记 schema、直接返回散文 —— state.history 在前端 / 本地存档里仍然是裸 narrative，前后端契约不变。
-- **选项之外的动作**：自由输入被当成 `玩家行动：xxx` 喂给模型，prompt 明确允许 AI 让不合常理的动作以合乎物理 / 世界观的方式失败，避免破坏沉浸感。
-- **温度与模型**：开场用 `deepseek-v4-pro` + `temperature=1.1`（鼓励多样开局），后续用 `deepseek-v4-pro` + `temperature=0.9`（鼓励连贯性）。想要更稳定的故事可以调低温度；想更狂野调到 `1.1+`。模型替换只需改 `start.js` / `continue.js` 顶部 `createHandler({ model, temperature, ... })` 的两个字段。`max_tokens` 设在 `_shared.js` 里，目前是 1500（DeepSeek JSON 模式有时会因为撞顶截断，留余量）。
-- **JSON 模式**：调用 DeepSeek 时使用 `response_format: { type: 'json_object' }`，且 system prompt 包含字面 `JSON` 字样 + `EXAMPLE JSON OUTPUT` 多行样例 —— 这是 [DeepSeek 官方文档](https://api-docs.deepseek.com/zh-cn/guides/json_mode) 推荐的用法。
+我们曾经尝试把 `/api/narrate` 做成真正的 SSE 流式接口——服务端用 `stream: true` 调 DeepSeek，再把上游 chunk 透传给浏览器，让玩家看到字一个一个浮出来。
+
+**服务端确实是流式的**：用 `curl --no-buffer` 能看到 chunk 按 DeepSeek 实际吐 token 的节奏到达。但所有浏览器路径（fetch + ReadableStream、EventSource、本地开发服务、生产环境）都呈现"前面静默几秒 + 最后一波刷完"的批量行为，根因在浏览器到服务端之间的某一层（最可能是网络中间设备的缓冲或 HTTP/2 帧聚合），未根治。
+
+最终回退为：服务端拿到完整叙事一次性 JSON 返回，前端用打字机模拟。代价是开场要多等 4-5 秒拿到完整叙事，体验上靠打字机动画来缓和。
+
+如果未来想再次尝试真流式，关键代码（DeepSeek 的 stream 调用、SSE 透传）在 `_shared.js` 的 `callDeepSeekStream` 里还保留着，可以作为起点。
 
 ---
 
-## 八、注意事项
+## 八、设计要点 / 可以怎么改
+
+- **故事连贯性**：`/api/narrate`（续写时）和 `/api/choices` 都会把 state.history 按"开场 + 中段省略 + 最近 10 回合"做一次压缩（阈值 12 回合），既保连贯又防爆上下文。
+- **隐藏纲要**：`state.summary` 是一句对玩家不可见的剧情纲要，Flash 在每个回合通过 `summary_update` 字段更新它，用来保持长程一致性。
+- **选项之外的动作**：自由输入被当成 `玩家行动：xxx` 喂给模型，prompt 明确允许 AI 让不合常理的动作以合乎物理 / 世界观的方式失败，避免破坏沉浸感。
+- **模型与温度**：
+  - `narrate.js` 用 `deepseek-v4-pro` + `temperature=1.1`（开场，鼓励多样开局）/ `0.9`（续写，鼓励连贯性）
+  - `choices.js` 用 `deepseek-v4-flash` + `temperature=0.7`（更便宜，选项足够多样即可）
+  - 替换模型只需改对应文件顶部 `model` 字段。想要更稳定的故事调低温度，想更狂野调到 `1.1+`。
+- **结局判定由 Flash 负责**：Pro 不需要知道"是否到结局"，只负责写一段收尾叙事；Flash 在生成选项时若判定本回合已自然收束，会返回 `ended: true` + `choices: []`，前端据此显示 F I N。
+- **JSON 模式只用在 choices**：`/api/choices` 调用 DeepSeek 时使用 `response_format: { type: 'json_object' }`，配合带 `EXAMPLE` 的 system prompt（[DeepSeek 官方推荐用法](https://api-docs.deepseek.com/zh-cn/guides/json_mode)）。`/api/narrate` 完全是纯文本输出，从根本上避开了"模型偶尔吐非法 JSON 把整回合搞砸"的失败模式。
+
+---
+
+## 九、注意事项
 
 - Edge Functions 的 CPU 时间限额、并发上限、单次执行最大时长等运行时约束以 [EdgeOne Pages 官方文档](https://edgeone.cloud.tencent.com/pages/document/) 为准。本项目里 `edgeone.json` 设置 `maxDuration: 120` 是为了给 DeepSeek 慢响应留足够空间。
 - DeepSeek 的实时定价、模型可用性、折扣以 [DeepSeek 计费文档](https://api-docs.deepseek.com/quick_start/pricing) 为准。
