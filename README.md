@@ -169,7 +169,7 @@ edgeone pages deploy . -n lantern-adventure
 | `[[name]]…[[/name]]` | 人名 / 地名 / 关键物品 |
 | `[[sense]]…[[/sense]]` | 突出感官细节 |
 | `[[whisper]]…[[/whisper]]` | 环境低语 / 心声 |
-| `[[break]]` | 段内停顿（自闭合） |
+| `<<break>>` | 段内停顿（自闭合） |
 
 解析路径**零 `innerHTML`**：用正则 `/\[\[\/?[a-z]+\]\]/g` 切 token，命中白名单的开标签压栈生成 `<span class="tag-X">`，其它任何 token（包括 HTML、含属性的伪标签、未闭合）一律降级为 `textContent`。新生成的回合和从分享链接 / 本地存档恢复出来的历史都走同一条解析路径。
 

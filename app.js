@@ -28,28 +28,12 @@
 
   // ============================================================
   // Persistence layer — localStorage (private) + URL fragment (shareable)
-  //
-  // Two layers, two purposes:
-  //   - localStorage : silent auto-save so refreshes / closing the tab don't
-  //                    lose progress. Only visible to this browser.
-  //   - URL fragment : the share button. Fragment, not query, so story
-  //                    content never hits the server or any CDN access log,
-  //                    and isn't truncated by EdgeOne's query-length limits.
-  //
-  // We use LZ-String's compressToEncodedURIComponent — already URL-safe, and
-  // it compresses repetitive Chinese dialogue history to ~30-40% of original,
-  // which buys us ~3x more shareable turns vs. plain base64.
+  // (unchanged from before; see history for design notes)
   // ============================================================
   const SAVE_KEY     = 'lantern.save.v1';
   const SAVE_VERSION = 1;
-  // Conservative shareable-URL size budget for the encoded fragment payload.
-  // ~6000 chars leaves plenty of room below the practical 8000-char URL ceiling
-  // once the origin + path + "#s=" prefix is included.
   const SHARE_MAX_LEN = 6000;
 
-  // ============================================================
-  // Game state
-  // ============================================================
   let storyState   = null;
   let lastChoices  = [];
   let storyEnded   = false;
@@ -69,12 +53,8 @@
 
   function saveLocal() {
     if (!storyState) return;
-    try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(buildSave()));
-    } catch (e) {
-      // Storage may be disabled (private mode) or full. Non-fatal.
-      console.warn('[save] localStorage write failed:', e);
-    }
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(buildSave())); }
+    catch (e) { console.warn('[save] localStorage write failed:', e); }
   }
 
   function loadLocal() {
@@ -84,31 +64,15 @@
       const save = JSON.parse(raw);
       if (!save || save.v !== SAVE_VERSION || !save.state) return null;
       return save;
-    } catch (e) {
-      return null;
-    }
+    } catch (e) { return null; }
   }
 
   function clearLocal() {
     try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
   }
 
-  // ----- URL fragment encoding -----
-  //
-  // We use the browser's built-in CompressionStream (Baseline Widely Available
-  // since May 2023, supported by all engines: Chrome/Edge/Firefox/Safari).
-  // No external library needed — earlier we tried LZ-String from a CDN but the
-  // SRI hash + China-mainland CDN reachability made it brittle.
-  //
-  // Pipeline: JSON → UTF-8 bytes → deflate-raw → base64url
-  // - deflate-raw skips the zlib header/checksum (2 + 4 bytes saved vs deflate,
-  //   and 18 bytes saved vs gzip), which matters because every byte costs ~1.33
-  //   characters in URL-safe base64.
-  // - base64url ('-', '_', no '=' padding) is fully URL-safe inside a fragment.
-
+  // ----- URL fragment encode/decode (CompressionStream + base64url) -----
   function bytesToBase64Url(bytes) {
-    // btoa needs a binary string; build it in 8K chunks to avoid call-stack
-    // limits on long inputs.
     let bin = '';
     const chunk = 0x8000;
     for (let i = 0; i < bytes.length; i += chunk) {
@@ -116,7 +80,6 @@
     }
     return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
-
   function base64UrlToBytes(str) {
     const padded = str.replace(/-/g, '+').replace(/_/g, '/') +
                    '==='.slice((str.length + 3) % 4);
@@ -125,57 +88,39 @@
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return bytes;
   }
-
   async function deflate(bytes) {
     const stream = new Blob([bytes]).stream()
       .pipeThrough(new CompressionStream('deflate-raw'));
     return new Uint8Array(await new Response(stream).arrayBuffer());
   }
-
   async function inflate(bytes) {
     const stream = new Blob([bytes]).stream()
       .pipeThrough(new DecompressionStream('deflate-raw'));
     return new Uint8Array(await new Response(stream).arrayBuffer());
   }
-
   async function encodeShare(save) {
     try {
-      const json = JSON.stringify(save);
-      const utf8 = new TextEncoder().encode(json);
+      const utf8 = new TextEncoder().encode(JSON.stringify(save));
       const compressed = await deflate(utf8);
       return bytesToBase64Url(compressed);
-    } catch (e) {
-      console.warn('[share] encode failed:', e);
-      return null;
-    }
+    } catch (e) { console.warn('[share] encode failed:', e); return null; }
   }
-
   async function decodeShare(encoded) {
     try {
       const compressed = base64UrlToBytes(encoded);
       const utf8 = await inflate(compressed);
-      const json = new TextDecoder().decode(utf8);
-      const save = JSON.parse(json);
+      const save = JSON.parse(new TextDecoder().decode(utf8));
       if (!save || save.v !== SAVE_VERSION || !save.state) return null;
       return save;
-    } catch (e) {
-      console.warn('[share] decode failed:', e);
-      return null;
-    }
+    } catch (e) { console.warn('[share] decode failed:', e); return null; }
   }
-
   async function tryParseUrlFragment() {
-    const hash = window.location.hash || '';
-    const m = hash.match(/[#&]s=([^&]+)/);
-    if (!m) return null;
-    return await decodeShare(m[1]);
+    const m = (window.location.hash || '').match(/[#&]s=([^&]+)/);
+    return m ? await decodeShare(m[1]) : null;
   }
-
   function clearUrlFragment() {
-    // Strip the long fragment from the address bar after we've loaded it.
     if (window.location.hash) {
-      const url = window.location.pathname + window.location.search;
-      history.replaceState(null, '', url);
+      history.replaceState(null, '', window.location.pathname + window.location.search);
     }
   }
 
@@ -193,22 +138,10 @@
   // ============================================================
   // UI helpers
   // ============================================================
-  function showSetupError(msg) {
-    setupError.textContent = msg;
-    setupError.classList.remove('hidden');
-  }
-  function clearSetupError() {
-    setupError.classList.add('hidden');
-    setupError.textContent = '';
-  }
-  function showGameError(msg) {
-    gameError.textContent = msg;
-    gameError.classList.remove('hidden');
-  }
-  function clearGameError() {
-    gameError.classList.add('hidden');
-    gameError.textContent = '';
-  }
+  function showSetupError(msg) { setupError.textContent = msg; setupError.classList.remove('hidden'); }
+  function clearSetupError() { setupError.classList.add('hidden'); setupError.textContent = ''; }
+  function showGameError(msg) { gameError.textContent = msg; gameError.classList.remove('hidden'); }
+  function clearGameError() { gameError.classList.add('hidden'); gameError.textContent = ''; }
 
   let toastTimer = null;
   function toast(msg, duration = 2500) {
@@ -218,10 +151,10 @@
     toastTimer = setTimeout(() => toastEl.classList.remove('show'), duration);
   }
 
-  function setBusy(b) {
+  function setBusy(b, { showLoading = true } = {}) {
     busy = b;
     if (b) {
-      loadingEl.classList.remove('hidden');
+      if (showLoading) loadingEl.classList.remove('hidden');
       choicesWrap.classList.add('hidden');
     } else {
       loadingEl.classList.add('hidden');
@@ -232,6 +165,75 @@
     shareBtn.disabled = b;
   }
 
+  // ============================================================
+  // Inline markup parser
+  //
+  // Whitelisted paired tags + one self-closing tag. Never touches innerHTML.
+  // Anything that doesn't match the strict shape is left as literal text via
+  // textContent — so half-streamed `[[em` will show up as plain characters,
+  // and "collapse" into <span class="tag-em"> as soon as `]]` arrives and the
+  // matching `[[/em]]` is later seen. This is intentional: the player gets to
+  // watch the prose typeset itself.
+  // ============================================================
+  const INLINE_TAGS = new Set(['em', 'dialog', 'name', 'sense', 'whisper']);
+  const SELF_CLOSING_TAGS = new Set(['break']);
+
+  function appendInline(parent, text) {
+    const re = /\[\[\/?[a-z]+\]\]|<<\/?[a-z]+>>/g;
+    let lastIndex = 0;
+    const stack = [parent];
+    const top = () => stack[stack.length - 1];
+
+    const matches = [...text.matchAll(re)];
+    for (const m of matches) {
+      const literal = text.slice(lastIndex, m.index);
+      if (literal) top().appendChild(document.createTextNode(literal));
+      lastIndex = m.index + m[0].length;
+
+      const tok = m[0];
+      const isClose = tok.startsWith('[[/') || tok.startsWith('<</');
+      const name = tok.replace(/[\[\]<>\/]/g, '');
+
+      if (!isClose && SELF_CLOSING_TAGS.has(name)) {
+        const el = document.createElement('span');
+        el.className = 'tag-' + name;
+        top().appendChild(el);
+        continue;
+      }
+      if (!isClose && INLINE_TAGS.has(name)) {
+        const el = document.createElement('span');
+        el.className = 'tag-' + name;
+        top().appendChild(el);
+        stack.push(el);
+        continue;
+      }
+      if (isClose && INLINE_TAGS.has(name)) {
+        const topEl = top();
+        if (topEl !== parent && topEl.className === 'tag-' + name) {
+          stack.pop();
+          continue;
+        }
+      }
+      top().appendChild(document.createTextNode(tok));
+    }
+    const tail = text.slice(lastIndex);
+    if (tail) top().appendChild(document.createTextNode(tail));
+  }
+
+  function renderToBody(body, text) {
+    const paras = String(text || '').split(/\n\n/);
+    body.replaceChildren();
+    paras.forEach((para, idx) => {
+      if (!para && idx < paras.length - 1) return;
+      const p = document.createElement('p');
+      appendInline(p, para);
+      body.appendChild(p);
+    });
+  }
+
+  // ============================================================
+  // Beats (story DOM nodes)
+  // ============================================================
   function appendBeat({ kind, text, opening = false }) {
     const beat = document.createElement('article');
     beat.className = 'beat';
@@ -250,17 +252,26 @@
     } else {
       const body = document.createElement('div');
       body.className = 'narrative';
-      const paras = text.split(/\n{2,}/);
-      paras.forEach((para) => {
-        const p = document.createElement('p');
-        appendInline(p, para.trim());
-        body.appendChild(p);
-      });
+      renderToBody(body, text);
       beat.appendChild(body);
     }
-
     scrollEl.appendChild(beat);
     return beat;
+  }
+
+  function createStreamingBeat(opening = false) {
+    const beat = document.createElement('article');
+    beat.className = 'beat';
+    const meta = document.createElement('div');
+    meta.className = 'beat-meta narrator';
+    meta.innerHTML = `<span class="dot"></span><span>${opening ? '楔子' : '续章'}</span><hr/>`;
+    beat.appendChild(meta);
+    const body = document.createElement('div');
+    body.className = 'narrative';
+    body._raw = '';
+    beat.appendChild(body);
+    scrollEl.appendChild(beat);
+    return { beat, body };
   }
 
   function renderChoices(choices) {
@@ -280,7 +291,6 @@
     });
     freeInput.value = '';
     choicesWrap.classList.remove('hidden');
-    
   }
 
   function showEnding() {
@@ -289,136 +299,108 @@
     choicesWrap.classList.add('hidden');
   }
 
+ // ============================================================
+  // OpenAI-format SSE consumer for /api/narrate
+  //
+  // We use XMLHttpRequest + the 'progress' event instead of fetch +
+  // ReadableStream. Why: mobile browsers (WeChat webview, QQ Browser, even
+  // some Chrome/Safari builds) buffer ReadableStream chunks aggressively
+  // before invoking reader.read(), making the stream look pseudo-stream:
+  // bytes arrive in bursts of dozens at a time even when the server is
+  // emitting one token every ~50ms. XHR's progress event fires at the
+  // socket level — every batch of bytes the kernel hands the browser
+  // triggers a callback immediately.
+  //
+  // We track xhr.responseText length and only process the *new* tail since
+  // the last progress event.
   // ============================================================
-  // ============================================================
-  // SSE streaming helpers
-  // ============================================================
+  function streamNarrate(payload, onChunk) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/narrate', true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      // Tell the browser we want raw text, not a parsed document.
+      xhr.responseType = 'text';
 
-  // Create an empty narrator beat with a live text node we can append chars to.
-  function createStreamingBeat(opening = false) {
-    const beat = document.createElement('article');
-    beat.className = 'beat';
-    const meta = document.createElement('div');
-    meta.className = 'beat-meta narrator';
-    meta.innerHTML = `<span class="dot"></span><span>${opening ? '楔子' : '续章'}</span><hr/>`;
-    beat.appendChild(meta);
-    const body = document.createElement('div');
-    body.className = 'narrative';
-    // We'll accumulate raw text here and re-render paragraphs as it grows.
-    body._raw = '';
-    beat.appendChild(body);
-    scrollEl.appendChild(beat);
-    return { beat, body };
-  }
+      let processedLen = 0;   // bytes of responseText already parsed
+      let leftover = '';      // partial line carried across events
+      let fullText = '';      // accumulated narration
+      let sawSSE = false;     // confirmed content-type is event-stream
 
-  // Whitelisted inline tags. The model is told it may use these in narrative
-  // text via `[[em]]…[[/em]]` syntax, plus a self-closing `[[break]]`.
-  // Anything else (including raw HTML) is treated as literal text.
-  const INLINE_TAGS = new Set(['em', 'dialog', 'name', 'sense', 'whisper']);
-  const SELF_CLOSING_TAGS = new Set(['break']);
+      function processNew() {
+        // responseText may be undefined briefly on some platforms.
+        const all = xhr.responseText;
+        if (!all || all.length <= processedLen) return;
+        const fresh = all.slice(processedLen);
+        processedLen = all.length;
 
-  // Parse a paragraph's text and append the resulting nodes (text + span) into
-  // `parent`. Safe by construction: we never touch innerHTML, and any token
-  // that doesn't match the strict `[[tag]]…[[/tag]]` whitelist is left as
-  // literal text via textContent.
-  function appendInline(parent, text) {
-    // Token regex captures: either a self-closing marker `[[break]]`, an
-    // opening `[[tag]]`, or a closing `[[/tag]]`. Tag names are limited to
-    // a-z. The split keeps the matches in the result array.
-    const re = /\[\[\/?[a-z]+\]\]|<<\/?[a-z]+>>/g;
-    let lastIndex = 0;
-    // Stack of currently-open span elements; when a closing tag matches the
-    // top of the stack we pop and resume appending into its parent.
-    const stack = [parent];
-    const top = () => stack[stack.length - 1];
+        const text = leftover + fresh;
+        const lines = text.split('\n');
+        leftover = lines.pop() || '';
 
-    const matches = [...text.matchAll(re)];
-    for (const m of matches) {
-      // Literal text between previous match and this one
-      const literal = text.slice(lastIndex, m.index);
-      if (literal) top().appendChild(document.createTextNode(literal));
-      lastIndex = m.index + m[0].length;
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line.startsWith('data:')) continue;
+          const data = line.slice(5).trim();
+          if (!data) continue;
+          if (data === '[DONE]') return;
 
-      const tok = m[0];                // e.g. "[[em]]", "[[/em]]", "[[break]]"
-      const isClose = tok.startsWith('[[/');
-      const name = tok.slice(isClose ? 3 : 2, -2);
-
-      if (!isClose && SELF_CLOSING_TAGS.has(name)) {
-        const el = document.createElement('span');
-        el.className = 'tag-' + name;
-        top().appendChild(el);
-        continue;
-      }
-
-      if (!isClose && INLINE_TAGS.has(name)) {
-        const el = document.createElement('span');
-        el.className = 'tag-' + name;
-        top().appendChild(el);
-        stack.push(el);
-        continue;
-      }
-
-      if (isClose && INLINE_TAGS.has(name)) {
-        // Only pop if it matches the top of stack — otherwise treat as literal.
-        const topEl = top();
-        if (topEl !== parent && topEl.className === 'tag-' + name) {
-          stack.pop();
-          continue;
+          let evt;
+          try { evt = JSON.parse(data); } catch (_) { continue; }
+          if (evt.error) {
+            reject(new Error(evt.error.message || evt.error || '叙事流出错'));
+            xhr.abort();
+            return;
+          }
+          const delta = evt?.choices?.[0]?.delta?.content;
+          if (typeof delta === 'string' && delta.length > 0) {
+            fullText += delta;
+            console.log('[chunk]', performance.now().toFixed(0), JSON.stringify(delta));
+            try { onChunk(delta); } catch (e) { /* don't kill the stream */ }
+          }
         }
       }
 
-      // Unrecognized tag, mismatched close, or close of a self-closing tag:
-      // render as literal text so the player at least sees something sane.
-      top().appendChild(document.createTextNode(tok));
-    }
-    // Trailing literal after the last token (or all of it if no tokens).
-    const tail = text.slice(lastIndex);
-    if (tail) top().appendChild(document.createTextNode(tail));
+      xhr.onreadystatechange = () => {
+        // readyState 2 = HEADERS_RECEIVED. Check we got SSE back, not a JSON
+        // error envelope.
+        if (xhr.readyState === 2) {
+          const ct = (xhr.getResponseHeader('Content-Type') || '').toLowerCase();
+          sawSSE = ct.includes('text/event-stream');
+        }
+      };
+
+      xhr.onprogress = () => {
+        if (!sawSSE) return;  // wait until headers confirm SSE
+        processNew();
+      };
+
+      xhr.onload = () => {
+        if (!sawSSE) {
+          // Server returned JSON error envelope; surface the message.
+          let msg;
+          try { msg = JSON.parse(xhr.responseText)?.error; } catch (_) {}
+          reject(new Error(msg || `请求失败，HTTP ${xhr.status}`));
+          return;
+        }
+        // Final flush — onprogress may have missed the last bytes.
+        processNew();
+        if (!fullText) {
+          reject(new Error('叙事流意外结束，请重试。'));
+        } else {
+          resolve(fullText);
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('网络错误，请检查连接后重试。'));
+      xhr.ontimeout = () => reject(new Error('请求超时，请重试。'));
+
+      xhr.send(JSON.stringify(payload));
+    });
   }
-
-  // Render the full narrative text into a beat created by createStreamingBeat.
-  // Splits on double-newline into paragraphs, then parses each paragraph's
-  // inline markup via appendInline. All DOM is built with createElement +
-  // textContent — innerHTML is never assigned.
-  // 在 setBeatText 上方添加辅助函数
-function renderToBody(body, text) {
-  const paras = String(text || '').split(/\n\n/);
-  body.replaceChildren();
-  paras.forEach((para, idx) => {
-    if (!para && idx < paras.length - 1) return;
-    const p = document.createElement('p');
-    appendInline(p, para);
-    body.appendChild(p);
-  });
-}
-
-
-
-function setBeatText({ body, beat }, text) {
-  const SPEED_MS = 100;
-  const fullText = String(text || '');
-  body._raw = fullText;
-  
-  if (body._typingInterval) clearInterval(body._typingInterval);
-  
-  let currentIndex = 0;
-  body._typingInterval = setInterval(() => {
-    if (currentIndex >= fullText.length) {
-      clearInterval(body._typingInterval);
-      body._typingInterval = null;
-      choicesEl.scrollIntoView({block:"end"});
-      return;
-    }
-    
-    const step = Math.min(2, fullText.length - currentIndex);
-    currentIndex += step;
-    renderToBody(body, fullText.slice(0, currentIndex));
-    beat.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, SPEED_MS);
-}
-
-  // Post JSON to an Edge Function and return the parsed response body.
-  // Throws Error on non-OK responses or { ok:false } payloads.
+  // ============================================================
+  // POST helper for /api/choices
+  // ============================================================
   async function postJSON(url, payload) {
     const resp = await fetch(url, {
       method: 'POST',
@@ -430,14 +412,19 @@ function setBeatText({ body, beat }, text) {
     if (!resp.ok || !data || data.ok === false) {
       throw new Error(data?.error || `请求失败，HTTP ${resp.status}`);
     }
-   
     return data;
   }
 
   // ============================================================
-  // API — streaming
+  // Title sanitizer — strip inline markup before using as document.title.
   // ============================================================
+  function cleanTitle(t) {
+    return String(t || '').replace(/\[\[\/?[a-z]+\]\]|<<\/?[a-z]+>>/g, '').trim() || '提灯人';
+  }
 
+  // ============================================================
+  // Story flow
+  // ============================================================
   async function startStory() {
     clearSetupError();
     startBtn.disabled = true;
@@ -449,23 +436,47 @@ function setBeatText({ body, beat }, text) {
       scrollEl.innerHTML = '';
       storyEnded = false;
 
-      // Create a beat immediately — text will stream into it.
+      // ── Stage 1: stream narrative ─────────────────────────────────────
       const streamCtx = createStreamingBeat(true);
       requestAnimationFrame(() =>
         streamCtx.beat.scrollIntoView({ behavior: 'smooth', block: 'start' })
       );
 
-      const done = await postJSON('/api/start', { genre: selectedGenre, seed });
-      setBeatText(streamCtx, done.narrative);
+      const narration = await streamNarrate(
+        { genre: selectedGenre, seed },
+        (chunk) => {
+          streamCtx.body._raw += chunk;
+          renderToBody(streamCtx.body, streamCtx.body._raw);
+          streamCtx.beat.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+      );
 
-      storyState  = done.state;
+      // ── Stage 2: fetch choices + meta ─────────────────────────────────
+      loadingEl.classList.remove('hidden');
+      const choicesResp = await postJSON('/api/choices', {
+        narration,
+        genre: selectedGenre,
+        seed,
+      });
+      loadingEl.classList.add('hidden');
+
+      const meta = choicesResp.meta || {};
+      storyState = {
+        title:       cleanTitle(meta.title),
+        genre:       meta.genre       || selectedGenre || '',
+        protagonist: meta.protagonist || '',
+        setting:     meta.setting     || '',
+        summary:     meta.summary     || '',
+        history: [{ role: 'assistant', text: narration }],
+      };
       document.title = storyState.title;
-      lastChoices = done.choices || [];
+      lastChoices = choicesResp.choices || [];
 
-      renderChoices(lastChoices);
+      if (choicesResp.ended) showEnding();
+      else renderChoices(lastChoices);
+
       saveLocal();
     } catch (err) {
-      // If we already entered game view but errored, go back to setup.
       if (!gameEl.classList.contains('hidden')) {
         gameEl.classList.add('hidden');
         setupEl.classList.remove('hidden');
@@ -474,6 +485,7 @@ function setBeatText({ body, beat }, text) {
     } finally {
       startBtn.disabled = false;
       setupStatus.textContent = '';
+      loadingEl.classList.add('hidden');
     }
   }
 
@@ -487,26 +499,46 @@ function setBeatText({ body, beat }, text) {
     requestAnimationFrame(() =>
       userBeat.scrollIntoView({ behavior: 'smooth', block: 'start' })
     );
-    setBusy(true);
+    setBusy(true, { showLoading: false });
 
     try {
+      // ── Stage 1: stream narrative ─────────────────────────────────────
       const streamCtx = createStreamingBeat(false);
       requestAnimationFrame(() =>
         streamCtx.beat.scrollIntoView({ behavior: 'smooth', block: 'start' })
       );
 
-      const done = await postJSON('/api/continue', { state: storyState, action: text });
-      setBeatText(streamCtx, done.narrative);
+      const narration = await streamNarrate(
+        { state: storyState, action: text },
+        (chunk) => {
+          streamCtx.body._raw += chunk;
+          renderToBody(streamCtx.body, streamCtx.body._raw);
+          streamCtx.beat.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+      );
 
-      storyState  = done.state;
-      document.title = storyState.title;
-      lastChoices = done.choices || [];
+      // ── Stage 2: fetch choices ────────────────────────────────────────
+      loadingEl.classList.remove('hidden');
+      const choicesResp = await postJSON('/api/choices', {
+        narration,
+        action: text,
+        state: storyState,
+      });
+      loadingEl.classList.add('hidden');
 
-      if (done.ended) {
-        showEnding();
-      } else {
-        renderChoices(lastChoices);
-      }
+      storyState = {
+        ...storyState,
+        summary: choicesResp.summary_update || storyState.summary,
+        history: [
+          ...storyState.history,
+          { role: 'user',      text },
+          { role: 'assistant', text: narration },
+        ],
+      };
+      lastChoices = choicesResp.choices || [];
+
+      if (choicesResp.ended) showEnding();
+      else renderChoices(lastChoices);
 
       saveLocal();
     } catch (err) {
@@ -519,7 +551,7 @@ function setBeatText({ body, beat }, text) {
   }
 
   // ============================================================
-  // Resume / restart
+  // Resume / restart  (unchanged)
   // ============================================================
   function enterGameView() {
     setupEl.classList.add('hidden');
@@ -537,7 +569,6 @@ function setBeatText({ body, beat }, text) {
       } else if (beat.role === 'user') {
         appendBeat({ kind: 'user', text: beat.text });
       }
-      // 'system' notes (history-elision markers) are skipped in the UI.
     });
   }
 
@@ -545,27 +576,19 @@ function setBeatText({ body, beat }, text) {
     storyState  = save.state;
     lastChoices = save.lastChoices || [];
     storyEnded  = !!save.ended;
+    document.title = cleanTitle(storyState?.title);
 
     enterGameView();
     rebuildStoryFromState(storyState);
 
-    if (storyEnded) {
-      showEnding();
-    } else {
-      renderChoices(lastChoices);
-    }
+    if (storyEnded) showEnding();
+    else renderChoices(lastChoices);
 
-    // Always re-save locally — a shared link becomes the recipient's own save.
     saveLocal();
-
     requestAnimationFrame(() => {
       window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
     });
-
-    if (fromShare) {
-      toast('已载入分享的故事进度');
-      clearUrlFragment();
-    }
+    if (fromShare) { toast('已载入分享的故事进度'); clearUrlFragment(); }
   }
 
   function showResumeCard(save) {
@@ -574,7 +597,9 @@ function setBeatText({ body, beat }, text) {
     const title = save.state?.title || '无名故事';
     const genre = save.state?.genre || '';
     const lastAssistant = [...history].reverse().find(b => b.role === 'assistant');
-    const excerpt = lastAssistant ? lastAssistant.text.replace(/\n+/g, ' ') : '';
+    const excerpt = lastAssistant
+      ? lastAssistant.text.replace(/\[\[\/?[a-z]+\]\]|<<\/?[a-z]+>>/g, '').replace(/\n+/g, ' ')
+      : '';
 
     const when = new Date(save.savedAt || Date.now());
     const whenStr = `${when.getMonth() + 1}月${when.getDate()}日 ${String(when.getHours()).padStart(2,'0')}:${String(when.getMinutes()).padStart(2,'0')}`;
@@ -586,10 +611,7 @@ function setBeatText({ body, beat }, text) {
 
   resumeBtn.addEventListener('click', () => {
     const save = loadLocal();
-    if (!save) {
-      resumeCard.classList.add('hidden');
-      return;
-    }
+    if (!save) { resumeCard.classList.add('hidden'); return; }
     loadSave(save);
   });
 
@@ -600,8 +622,6 @@ function setBeatText({ body, beat }, text) {
   });
 
   function restart() {
-    // Don't auto-wipe the save here. The new story will overwrite it as
-    // it progresses; if the player abandons mid-setup, the old save remains.
     storyState   = null;
     lastChoices  = [];
     storyEnded   = false;
@@ -619,25 +639,17 @@ function setBeatText({ body, beat }, text) {
   }
 
   // ============================================================
-  // Share
+  // Share  (unchanged)
   // ============================================================
   async function shareProgress() {
     if (!storyState) return;
     const encoded = await encodeShare(buildSave());
-
-    if (!encoded) {
-      toast('生成分享链接失败，请重试');
-      return;
-    }
-
+    if (!encoded) { toast('生成分享链接失败，请重试'); return; }
     if (encoded.length > SHARE_MAX_LEN) {
       toast('故事太长，无法直接分享。建议玩到结局或截图分享。', 4000);
       return;
     }
-
     const url = `${window.location.origin}${window.location.pathname}#s=${encoded}`;
-
-    // Prefer native share sheet on mobile; fall back to clipboard.
     if (navigator.share) {
       try {
         await navigator.share({
@@ -646,12 +658,8 @@ function setBeatText({ body, beat }, text) {
           url,
         });
         return;
-      } catch (e) {
-        if (e?.name === 'AbortError') return;
-        // Otherwise fall through to clipboard.
-      }
+      } catch (e) { if (e?.name === 'AbortError') return; }
     }
-
     try {
       await navigator.clipboard.writeText(url);
       toast(`链接已复制（${encoded.length.toLocaleString()} 字符）`);
@@ -671,10 +679,7 @@ function setBeatText({ body, beat }, text) {
     if (v) submitAction(v);
   });
   freeInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.isComposing) {
-      e.preventDefault();
-      freeBtn.click();
-    }
+    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); freeBtn.click(); }
   });
   document.addEventListener('keydown', (e) => {
     if (busy || gameEl.classList.contains('hidden')) return;
@@ -683,29 +688,17 @@ function setBeatText({ body, beat }, text) {
     if (['A','B','C','D'].includes(k)) {
       const idx = k.charCodeAt(0) - 65;
       const buttons = choicesEl.querySelectorAll('.choice');
-      if (buttons[idx]) {
-        e.preventDefault();
-        buttons[idx].click();
-      }
+      if (buttons[idx]) { e.preventDefault(); buttons[idx].click(); }
     }
   });
 
   // ============================================================
   // Boot
-  //   1. URL fragment (shared link) wins — overrides local save
-  //   2. localStorage  → show resume card; user decides
-  //   3. Otherwise: fresh start
   // ============================================================
   (async function boot() {
     const shared = await tryParseUrlFragment();
-    if (shared) {
-      loadSave(shared, { fromShare: true });
-      return;
-    }
+    if (shared) { loadSave(shared, { fromShare: true }); return; }
     const local = loadLocal();
-    if (local) {
-      showResumeCard(local);
-    }
+    if (local) showResumeCard(local);
   })();
-
 })();
