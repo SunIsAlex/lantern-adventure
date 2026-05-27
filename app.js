@@ -352,7 +352,7 @@
     });
     freeInput.value = '';
     choicesWrap.classList.remove('hidden');
-    choicesEl.scrollIntoView({block:"end"});
+    choicesEl.scrollIntoView({behavior:"smooth",block:"end"});
   }
 
   function showEnding() {
