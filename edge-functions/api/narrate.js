@@ -1,24 +1,23 @@
 // EdgeOne Pages Edge Function
 // Route: POST /api/narrate
 //
-// This route is a thin authenticated proxy to DeepSeek's streaming chat
-// completion endpoint. We deliberately do NOT transform the upstream SSE
-// — instead we hand `upstream.body` straight to `new Response(...)`. This
-// is the one streaming pattern EdgeOne's runtime reliably flushes
-// (confirmed by the official Edge AI template, which does exactly this).
-//
-// The client (app.js) parses the OpenAI-format SSE itself.
+// Non-streaming version: DeepSeek V4 Pro is called with stream:false and the
+// full narrative is returned as a single JSON payload. The client simulates
+// a typewriter effect locally for pacing.
 //
 // Request body:
 //   { state?, action?, genre?, seed? }
 //   - no state    → opening turn. Optional genre/seed for theme.
 //   - with state  → continuation turn. action required.
+//
+// Response:
+//   success: { ok: true, narrative: "..." }
+//   error:   { ok: false, error: "..." }   (with HTTP 4xx/5xx)
 
 import {
   onRequestOptions,
   jsonError,
-  corsHeaders,
-  callDeepSeekStream,
+  callDeepSeekJSON,
   INLINE_MARKUP_GUIDE,
 } from '../_shared.js';
 
@@ -62,17 +61,17 @@ function buildContinueMessages(inState, action) {
   const messages = [{ role: 'system', content: CONTINUE_SYSTEM_PROMPT }];
 
   const bible = [
-    inState.title       ? `标题：${inState.title}`            : '',
-    inState.genre       ? `题材：${inState.genre}`            : '',
-    inState.protagonist ? `主角：${inState.protagonist}`      : '',
-    inState.setting     ? `背景：${inState.setting}`          : '',
-    inState.summary     ? `纲要（勿复述）：${inState.summary}` : '',
+    inState.title       ? `标题:${inState.title}`            : '',
+    inState.genre       ? `题材:${inState.genre}`            : '',
+    inState.protagonist ? `主角:${inState.protagonist}`      : '',
+    inState.setting     ? `背景:${inState.setting}`          : '',
+    inState.summary     ? `纲要(勿复述):${inState.summary}`  : '',
   ].filter(Boolean).join('\n');
   if (bible) messages.push({ role: 'system', content: bible });
 
   const history = Array.isArray(inState.history) ? inState.history : [];
   const trimmed = history.length > 12
-    ? [history[0], { role: 'system', text: '……（中间情节省略）……' }, ...history.slice(-10)]
+    ? [history[0], { role: 'system', text: '……(中间情节省略)……' }, ...history.slice(-10)]
     : history;
 
   for (const beat of trimmed) {
@@ -91,6 +90,25 @@ function buildContinueMessages(inState, action) {
   });
 
   return messages;
+}
+
+// callDeepSeekJSON in _shared.js sets response_format:{type:'json_object'},
+// which we don't want here — narrate returns plain prose. So we call fetch
+// directly with the same options minus that flag.
+async function callDeepSeekPlainText({ apiKey, model, messages, temperature }) {
+  return fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature,
+      max_tokens: 1500,
+      stream: false,
+      thinking: { type: 'disabled' },
+    }),
+    eo: { timeoutSetting: { connectTimeout: 5000, readTimeout: 120000, writeTimeout: 5000 } },
+  });
 }
 
 export async function onRequestPost(context) {
@@ -116,9 +134,9 @@ export async function onRequestPost(context) {
     temperature = 1.1;
   }
 
-  let upstream;
+  let dsResp;
   try {
-    upstream = await callDeepSeekStream({
+    dsResp = await callDeepSeekPlainText({
       apiKey,
       model: 'deepseek-v4-pro',
       messages,
@@ -127,25 +145,23 @@ export async function onRequestPost(context) {
   } catch (err) {
     return jsonError(`连接 DeepSeek 失败：${err.message}`, 502);
   }
-  if (!upstream.ok) {
-    const t = await upstream.text();
-    return jsonError(`DeepSeek API ${upstream.status}: ${t.slice(0, 200)}`, 502);
+  if (!dsResp.ok) {
+    const t = await dsResp.text();
+    return jsonError(`DeepSeek API ${dsResp.status}: ${t.slice(0, 200)}`, 502);
   }
 
-  // Direct passthrough — no TransformStream, no wrapper. This is the only
-  // streaming pattern EdgeOne reliably flushes in our testing. The client
-  // is responsible for parsing OpenAI-format chunks:
-  //   data: {"choices":[{"delta":{"content":"夜"}}]}
-  //   ...
-  //   data: [DONE]
-  return new Response(upstream.body, {
+  let dsJson;
+  try { dsJson = await dsResp.json(); }
+  catch (err) { return jsonError(`DeepSeek 响应解析失败：${err.message}`, 502); }
+
+  const narrative = String(dsJson?.choices?.[0]?.message?.content || '').trim();
+  if (!narrative) return jsonError('模型返回叙事为空，请重试。', 502);
+
+  return new Response(JSON.stringify({ ok: true, narrative }), {
     status: 200,
     headers: {
-      'Content-Type':      'text/event-stream; charset=utf-8',
-      'Cache-Control':     'no-cache, no-store, no-transform',
-      'Connection':        'keep-alive',
-      'X-Accel-Buffering': 'no',
-      ...corsHeaders(),
+      'Content-Type': 'application/json; charset=utf-8',
+      'Access-Control-Allow-Origin': '*',
     },
   });
 }

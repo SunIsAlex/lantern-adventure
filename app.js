@@ -28,7 +28,6 @@
 
   // ============================================================
   // Persistence layer — localStorage (private) + URL fragment (shareable)
-  // (unchanged from before; see history for design notes)
   // ============================================================
   const SAVE_KEY     = 'lantern.save.v1';
   const SAVE_VERSION = 1;
@@ -170,10 +169,9 @@
   //
   // Whitelisted paired tags + one self-closing tag. Never touches innerHTML.
   // Anything that doesn't match the strict shape is left as literal text via
-  // textContent — so half-streamed `[[em` will show up as plain characters,
-  // and "collapse" into <span class="tag-em"> as soon as `]]` arrives and the
-  // matching `[[/em]]` is later seen. This is intentional: the player gets to
-  // watch the prose typeset itself.
+  // textContent — so a partially-typed `[[em` shows up as plain characters
+  // and "collapses" into <span class="tag-em"> once `]]` arrives and the
+  // matching `[[/em]]` is later seen.
   // ============================================================
   const INLINE_TAGS = new Set(['em', 'dialog', 'name', 'sense', 'whisper']);
   const SELF_CLOSING_TAGS = new Set(['break']);
@@ -218,6 +216,69 @@
     }
     const tail = text.slice(lastIndex);
     if (tail) top().appendChild(document.createTextNode(tail));
+  }
+
+  // ============================================================
+  // Incremental & full renderers
+  //
+  // appendChunkToBody(): for the typewriter animation. Appends incoming
+  //   text by extending the trailing text node (a single fast DOM op).
+  //   When a complete markup token like `[[em]]` arrives, we re-parse
+  //   only the *current* paragraph — other paragraphs stay untouched.
+  //
+  // renderToBody(): full rebuild from a finished string. Used when
+  //   restoring from save/share where the entire text is already in hand.
+  // ============================================================
+  function appendChunkToBody(body, chunk) {
+    if (!body._raw) {
+      body._raw = '';
+      body._paraRawStarts = [0];
+      body._liveP = null;
+    }
+
+    const prevLen = body._raw.length;
+    body._raw += chunk;
+
+    for (let i = prevLen; i < body._raw.length; i++) {
+      const ch = body._raw[i];
+
+      // Paragraph break — only fires on the second '\n' of "\n\n".
+      if (ch === '\n' && i > 0 && body._raw[i - 1] === '\n') {
+        if (body._liveP && body._liveP.lastChild &&
+            body._liveP.lastChild.nodeType === 3 &&
+            body._liveP.lastChild.textContent.endsWith('\n')) {
+          body._liveP.lastChild.textContent =
+            body._liveP.lastChild.textContent.replace(/\n+$/, '');
+        }
+        body._paraRawStarts.push(i + 1);
+        body._liveP = null;
+        continue;
+      }
+
+      if (!body._liveP) {
+        body._liveP = document.createElement('p');
+        body.appendChild(body._liveP);
+      }
+
+      const last = body._liveP.lastChild;
+      if (last && last.nodeType === 3) {
+        last.appendData(ch);
+      } else {
+        body._liveP.appendChild(document.createTextNode(ch));
+      }
+
+      if (ch === ']' || ch === '>') {
+        const need = ch === ']' ? ']]' : '>>';
+        if (body._raw.slice(i - 1, i + 1) === need) {
+          const paraStart = body._paraRawStarts[body._paraRawStarts.length - 1];
+          const paraText = body._raw.slice(paraStart);
+          if (/\[\[\/?[a-z]+\]\]|<<\/?[a-z]+>>/.test(paraText)) {
+            body._liveP.replaceChildren();
+            appendInline(body._liveP, paraText);
+          }
+        }
+      }
+    }
   }
 
   function renderToBody(body, text) {
@@ -268,7 +329,6 @@
     beat.appendChild(meta);
     const body = document.createElement('div');
     body.className = 'narrative';
-    body._raw = '';
     beat.appendChild(body);
     scrollEl.appendChild(beat);
     return { beat, body };
@@ -288,9 +348,11 @@
       b.textContent = text;
       b.addEventListener('click', () => submitAction(text));
       choicesEl.appendChild(b);
+
     });
     freeInput.value = '';
     choicesWrap.classList.remove('hidden');
+    choicesEl.scrollIntoView({block:"end"});
   }
 
   function showEnding() {
@@ -299,105 +361,48 @@
     choicesWrap.classList.add('hidden');
   }
 
- // ============================================================
-  // OpenAI-format SSE consumer for /api/narrate
-  //
-  // We use XMLHttpRequest + the 'progress' event instead of fetch +
-  // ReadableStream. Why: mobile browsers (WeChat webview, QQ Browser, even
-  // some Chrome/Safari builds) buffer ReadableStream chunks aggressively
-  // before invoking reader.read(), making the stream look pseudo-stream:
-  // bytes arrive in bursts of dozens at a time even when the server is
-  // emitting one token every ~50ms. XHR's progress event fires at the
-  // socket level — every batch of bytes the kernel hands the browser
-  // triggers a callback immediately.
-  //
-  // We track xhr.responseText length and only process the *new* tail since
-  // the last progress event.
   // ============================================================
-  function streamNarrate(payload, onChunk) {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/narrate', true);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      // Tell the browser we want raw text, not a parsed document.
-      xhr.responseType = 'text';
+  // /api/narrate — non-streaming.
+  //
+  // We tried real SSE streaming and gave up: server-side it streams fine
+  // (verified by curl), but every browser path we tried (fetch + ReadableStream,
+  // EventSource, localhost, production) ended up buffering the entire response
+  // before delivery. Root cause is somewhere between the browser's networking
+  // stack and the network path — undiagnosed.  For now we just fetch the full
+  // narration as JSON and animate a client-side typewriter for pacing.
+  // ============================================================
+  async function fetchNarration(payload) {
+    const resp = await fetch('/api/narrate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    let data;
+    try { data = await resp.json(); } catch (_) {}
+    if (!resp.ok || !data || data.ok === false) {
+      throw new Error(data?.error || `请求失败，HTTP ${resp.status}`);
+    }
+    return String(data.narrative || '').trim();
+  }
 
-      let processedLen = 0;   // bytes of responseText already parsed
-      let leftover = '';      // partial line carried across events
-      let fullText = '';      // accumulated narration
-      let sawSSE = false;     // confirmed content-type is event-stream
-
-      function processNew() {
-        // responseText may be undefined briefly on some platforms.
-        const all = xhr.responseText;
-        if (!all || all.length <= processedLen) return;
-        const fresh = all.slice(processedLen);
-        processedLen = all.length;
-
-        const text = leftover + fresh;
-        const lines = text.split('\n');
-        leftover = lines.pop() || '';
-
-        for (const rawLine of lines) {
-          const line = rawLine.trim();
-          if (!line.startsWith('data:')) continue;
-          const data = line.slice(5).trim();
-          if (!data) continue;
-          if (data === '[DONE]') return;
-
-          let evt;
-          try { evt = JSON.parse(data); } catch (_) { continue; }
-          if (evt.error) {
-            reject(new Error(evt.error.message || evt.error || '叙事流出错'));
-            xhr.abort();
-            return;
-          }
-          const delta = evt?.choices?.[0]?.delta?.content;
-          if (typeof delta === 'string' && delta.length > 0) {
-            fullText += delta;
-            console.log('[chunk]', performance.now().toFixed(0), JSON.stringify(delta));
-            try { onChunk(delta); } catch (e) { /* don't kill the stream */ }
-          }
-        }
-      }
-
-      xhr.onreadystatechange = () => {
-        // readyState 2 = HEADERS_RECEIVED. Check we got SSE back, not a JSON
-        // error envelope.
-        if (xhr.readyState === 2) {
-          const ct = (xhr.getResponseHeader('Content-Type') || '').toLowerCase();
-          sawSSE = ct.includes('text/event-stream');
-        }
+  // Animate full text into a streaming beat one slice at a time. Same DOM
+  // path as the old streaming version (appendChunkToBody), so inline markup
+  // tokens still "collapse" into styled spans as their closing brackets land.
+  function typewriterInto(streamCtx, fullText, { speedMs = 35, step = 2 } = {}) {
+    return new Promise((resolve) => {
+      let i = 0;
+      const tick = () => {
+        if (i >= fullText.length) { resolve(); return; }
+        const next = Math.min(i + step, fullText.length);
+        appendChunkToBody(streamCtx.body, fullText.slice(i, next));
+        streamCtx.beat.scrollIntoView({ block: 'end' });
+        i = next;
+        setTimeout(tick, speedMs);
       };
-
-      xhr.onprogress = () => {
-        if (!sawSSE) return;  // wait until headers confirm SSE
-        processNew();
-      };
-
-      xhr.onload = () => {
-        if (!sawSSE) {
-          // Server returned JSON error envelope; surface the message.
-          let msg;
-          try { msg = JSON.parse(xhr.responseText)?.error; } catch (_) {}
-          reject(new Error(msg || `请求失败，HTTP ${xhr.status}`));
-          return;
-        }
-        // Final flush — onprogress may have missed the last bytes.
-        processNew();
-        if (!fullText) {
-          reject(new Error('叙事流意外结束，请重试。'));
-        } else {
-          resolve(fullText);
-        }
-      };
-
-      xhr.onerror = () => reject(new Error('网络错误，请检查连接后重试。'));
-      xhr.ontimeout = () => reject(new Error('请求超时，请重试。'));
-
-      xhr.send(JSON.stringify(payload));
+      tick();
     });
   }
+
   // ============================================================
   // POST helper for /api/choices
   // ============================================================
@@ -436,22 +441,16 @@
       scrollEl.innerHTML = '';
       storyEnded = false;
 
-      // ── Stage 1: stream narrative ─────────────────────────────────────
       const streamCtx = createStreamingBeat(true);
       requestAnimationFrame(() =>
         streamCtx.beat.scrollIntoView({ behavior: 'smooth', block: 'start' })
       );
 
-      const narration = await streamNarrate(
-        { genre: selectedGenre, seed },
-        (chunk) => {
-          streamCtx.body._raw += chunk;
-          renderToBody(streamCtx.body, streamCtx.body._raw);
-          streamCtx.beat.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        }
-      );
+      // Stage 1: fetch narrative (block) + typewriter
+      const narration = await fetchNarration({ genre: selectedGenre, seed });
+      await typewriterInto(streamCtx, narration);
 
-      // ── Stage 2: fetch choices + meta ─────────────────────────────────
+      // Stage 2: fetch choices + meta
       loadingEl.classList.remove('hidden');
       const choicesResp = await postJSON('/api/choices', {
         narration,
@@ -502,22 +501,18 @@
     setBusy(true, { showLoading: false });
 
     try {
-      // ── Stage 1: stream narrative ─────────────────────────────────────
       const streamCtx = createStreamingBeat(false);
       requestAnimationFrame(() =>
         streamCtx.beat.scrollIntoView({ behavior: 'smooth', block: 'start' })
       );
 
-      const narration = await streamNarrate(
-        { state: storyState, action: text },
-        (chunk) => {
-          streamCtx.body._raw += chunk;
-          renderToBody(streamCtx.body, streamCtx.body._raw);
-          streamCtx.beat.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        }
-      );
+      // Stage 1: fetch narrative (block) + typewriter
+      loadingEl.classList.remove('hidden');
+      const narration = await fetchNarration({ state: storyState, action: text });
+      loadingEl.classList.add('hidden');
+      await typewriterInto(streamCtx, narration);
 
-      // ── Stage 2: fetch choices ────────────────────────────────────────
+      // Stage 2: fetch choices
       loadingEl.classList.remove('hidden');
       const choicesResp = await postJSON('/api/choices', {
         narration,
@@ -551,7 +546,7 @@
   }
 
   // ============================================================
-  // Resume / restart  (unchanged)
+  // Resume / restart
   // ============================================================
   function enterGameView() {
     setupEl.classList.add('hidden');
@@ -639,7 +634,7 @@
   }
 
   // ============================================================
-  // Share  (unchanged)
+  // Share
   // ============================================================
   async function shareProgress() {
     if (!storyState) return;
